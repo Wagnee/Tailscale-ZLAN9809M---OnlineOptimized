@@ -1,0 +1,144 @@
+<%+header%>
+
+<%
+local sys = require "luci.sys"
+local util = require "luci.util"
+
+local function pcdata(v)
+    return util.pcdata(v or "")
+end
+
+local function read_env()
+    local env = {}
+    local f = io.open("/etc/tailscale/tailscale.env", "r")
+
+    if not f then
+        return env
+    end
+
+    for line in f:lines() do
+        local k, v = line:match('^([A-Z0-9_]+)="(.*)"')
+        if k and v then
+            env[k] = v
+        end
+    end
+
+    f:close()
+    return env
+end
+
+local env = read_env()
+
+local service_status = sys.exec("/etc/init.d/tailscale-loader status 2>&1")
+local ps_status = sys.exec("ps | grep tailscale | grep -v grep 2>&1")
+local tailscale_status = sys.exec("/tmp/tailscale --socket=/tmp/tailscale-runtime/tailscaled.sock status 2>&1")
+local tailscale_ip = sys.exec("/tmp/tailscale --socket=/tmp/tailscale-runtime/tailscaled.sock ip 2>&1")
+local log_output = sys.exec("tail -n 80 /tmp/tailscale-loader.log 2>&1")
+local disk_output = sys.exec("df -h 2>&1")
+local mem_output = sys.exec("free -h 2>&1")
+%>
+
+<h2>Tailscale ZLAN9809M</h2>
+
+<p>
+    This page manages the lightweight Tailscale loader used on this ZLAN9809M/OpenWrt router.
+</p>
+
+<div class="cbi-map">
+    <h3>Service actions</h3>
+
+    <p>
+        <a class="btn cbi-button cbi-button-apply" href="<%=url('admin/services/tailscale_zlan/action')%>?cmd=start">Start</a>
+        <a class="btn cbi-button cbi-button-reset" href="<%=url('admin/services/tailscale_zlan/action')%>?cmd=stop">Stop</a>
+        <a class="btn cbi-button cbi-button-reload" href="<%=url('admin/services/tailscale_zlan/action')%>?cmd=restart">Restart</a>
+    </p>
+</div>
+
+<div class="cbi-map">
+    <h3>Configuration</h3>
+
+    <form method="post" action="<%=url('admin/services/tailscale_zlan/save')%>">
+        <div class="cbi-section">
+            <div class="cbi-value">
+                <label class="cbi-value-title">Binary URL</label>
+                <div class="cbi-value-field">
+                    <input class="cbi-input-text" type="text" name="ts_binary_url" style="width: 100%;"
+                           value="<%=pcdata(env.TS_BINARY_URL or '')%>" />
+                </div>
+            </div>
+
+            <div class="cbi-value">
+                <label class="cbi-value-title">Hostname</label>
+                <div class="cbi-value-field">
+                    <input class="cbi-input-text" type="text" name="ts_hostname"
+                           value="<%=pcdata(env.TS_HOSTNAME or '')%>" />
+                </div>
+            </div>
+
+            <div class="cbi-value">
+                <label class="cbi-value-title">Advertised routes</label>
+                <div class="cbi-value-field">
+                    <input class="cbi-input-text" type="text" name="ts_routes"
+                           value="<%=pcdata(env.TS_ROUTES or '')%>" />
+                    <br />
+                    <small>Example: 192.168.9.0/24 or 10.10.1.0/24</small>
+                </div>
+            </div>
+
+            <div class="cbi-value">
+                <label class="cbi-value-title">Auth key</label>
+                <div class="cbi-value-field">
+                    <input class="cbi-input-password" type="password" name="ts_authkey" value="" />
+                    <br />
+                    <small>Leave blank to keep the current key. Do not store public keys in GitHub.</small>
+                    <br />
+                    <label>
+                        <input type="checkbox" name="clear_authkey" value="1" />
+                        Clear saved auth key
+                    </label>
+                </div>
+            </div>
+
+            <div class="cbi-page-actions">
+                <input class="btn cbi-button cbi-button-save" type="submit" value="Save configuration" />
+            </div>
+        </div>
+    </form>
+</div>
+
+<div class="cbi-map">
+    <h3>Service status</h3>
+    <pre><%=pcdata(service_status)%></pre>
+</div>
+
+<div class="cbi-map">
+    <h3>Tailscale IP</h3>
+    <pre><%=pcdata(tailscale_ip)%></pre>
+</div>
+
+<div class="cbi-map">
+    <h3>Tailscale status</h3>
+    <pre><%=pcdata(tailscale_status)%></pre>
+</div>
+
+<div class="cbi-map">
+    <h3>Processes</h3>
+    <pre><%=pcdata(ps_status)%></pre>
+</div>
+
+<div class="cbi-map">
+    <h3>Memory</h3>
+    <pre><%=pcdata(mem_output)%></pre>
+</div>
+
+<div class="cbi-map">
+    <h3>Disk</h3>
+    <pre><%=pcdata(disk_output)%></pre>
+</div>
+
+<div class="cbi-map">
+    <h3>Loader log</h3>
+    <pre><%=pcdata(log_output)%></pre>
+</div>
+
+<%+footer%>
