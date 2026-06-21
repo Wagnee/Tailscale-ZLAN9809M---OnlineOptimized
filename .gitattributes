@@ -3,3 +3,6 @@
 tailscale-loader text eol=lf
 tailscale.env text eol=lf
 install.sh text eol=lf
+install-luci.sh text eol=lf
+*.lua text eol=lf
+*.htm text eol=lf
