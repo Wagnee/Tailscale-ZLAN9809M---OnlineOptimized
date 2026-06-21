@@ -299,3 +299,7 @@ if [ -f "$CONFIG_FILE" ]; then
 fi
 
 echo ""
+echo "Rebooting to run tailscale."
+echo ""
+reboot
+echo ""
