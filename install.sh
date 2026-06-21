@@ -12,12 +12,16 @@ LUCI_INSTALLER_URL="$RAW_BASE/install-luci.sh"
 
 CONFIG_DIR="/etc/tailscale"
 CONFIG_FILE="$CONFIG_DIR/tailscale.env"
+STATE_FILE="$CONFIG_DIR/tailscaled.state"
 
 LOADER_PATH="/usr/bin/tailscale-loader.sh"
 INIT_PATH="/etc/init.d/tailscale-loader"
 
 TMP_BINARY="/tmp/tailscale.combined"
 TMP_ENV="/tmp/tailscale.env.repo"
+
+TAILSCALE_BIN="/tmp/tailscale"
+TAILSCALED_BIN="/tmp/tailscaled"
 
 echo ""
 echo "============================================================"
@@ -45,11 +49,67 @@ echo "Current disk usage:"
 df -h
 echo ""
 
+echo "Stopping previous Tailscale service if it exists..."
+if [ -x "$INIT_PATH" ]; then
+    "$INIT_PATH" stop 2>/dev/null
+fi
+
+killall tailscaled 2>/dev/null
+killall tailscale.combined 2>/dev/null
+
+mkdir -p "$CONFIG_DIR"
+
+if [ -f "$CONFIG_FILE" ] || [ -f "$STATE_FILE" ]; then
+    echo ""
+    echo "Existing Tailscale configuration/state was found:"
+    [ -f "$CONFIG_FILE" ] && echo "  - $CONFIG_FILE"
+    [ -f "$STATE_FILE" ] && echo "  - $STATE_FILE"
+    echo ""
+    echo "Choose what to do:"
+    echo "  1) Keep existing Tailscale state and only update files"
+    echo "  2) Backup and reset configuration/state"
+    echo "  3) Cancel installation"
+    echo ""
+    printf "Option [1]: "
+    read EXISTING_OPTION
+    EXISTING_OPTION="${EXISTING_OPTION:-1}"
+
+    case "$EXISTING_OPTION" in
+        1)
+            echo "Keeping existing configuration/state."
+            KEEP_EXISTING="1"
+            ;;
+        2)
+            BACKUP_DIR="/etc/tailscale.backup.$(date +%Y%m%d%H%M%S)"
+            echo "Creating backup at: $BACKUP_DIR"
+            mkdir -p "$BACKUP_DIR"
+
+            [ -f "$CONFIG_FILE" ] && cp "$CONFIG_FILE" "$BACKUP_DIR/tailscale.env"
+            [ -f "$STATE_FILE" ] && cp "$STATE_FILE" "$BACKUP_DIR/tailscaled.state"
+
+            echo "Removing previous configuration/state..."
+            rm -f "$CONFIG_FILE"
+            rm -f "$STATE_FILE"
+
+            KEEP_EXISTING="0"
+            ;;
+        3)
+            echo "Installation cancelled."
+            exit 0
+            ;;
+        *)
+            echo "Invalid option."
+            exit 1
+            ;;
+    esac
+else
+    KEEP_EXISTING="0"
+fi
+
+echo ""
 echo "Downloading repository files from:"
 echo "$RAW_BASE"
 echo ""
-
-mkdir -p "$CONFIG_DIR"
 
 echo "Downloading tailscale.env template..."
 wget --no-check-certificate -O "$TMP_ENV" "$ENV_URL"
@@ -88,44 +148,44 @@ chmod +x "$LOADER_PATH"
 chmod +x "$INIT_PATH"
 chmod +x "$TMP_BINARY"
 
-echo ""
-echo "Default values are shown in brackets."
-echo ""
+# Create runtime symlinks immediately.
+rm -f "$TAILSCALE_BIN" "$TAILSCALED_BIN"
+ln -sf "$TMP_BINARY" "$TAILSCALE_BIN"
+ln -sf "$TMP_BINARY" "$TAILSCALED_BIN"
 
-printf "Tailscale hostname [zlan9809m-sr2]: "
-read TS_HOSTNAME
-TS_HOSTNAME="${TS_HOSTNAME:-zlan9809m-sr2}"
+if [ "$KEEP_EXISTING" = "0" ]; then
+    echo ""
+    echo "Default values are shown in brackets."
+    echo ""
 
-while true; do
-    printf "LAN subnet to advertise [192.168.9.0/24]: "
-    read TS_ROUTES
-    TS_ROUTES="${TS_ROUTES:-192.168.9.0/24}"
+    printf "Tailscale hostname [zlan9809m-sr2]: "
+    read TS_HOSTNAME
+    TS_HOSTNAME="${TS_HOSTNAME:-zlan9809m-sr2}"
 
-    case "$TS_ROUTES" in
-        */*)
-            break
-            ;;
-        *)
-            echo "Invalid subnet: $TS_ROUTES"
-            echo "Use CIDR format, for example: 192.168.9.0/24 or 10.10.1.0/24"
-            ;;
-    esac
-done
+    while true; do
+        printf "LAN subnet to advertise [192.168.9.0/24]: "
+        read TS_ROUTES
+        TS_ROUTES="${TS_ROUTES:-192.168.9.0/24}"
 
-echo ""
-echo "Optional: paste a Tailscale auth key for automatic login."
-echo "Leave empty to authenticate manually using the URL shown in logs."
-echo "WARNING: do not publish your auth key in GitHub or documentation."
-printf "Tailscale auth key []: "
-read TS_AUTHKEY
+        case "$TS_ROUTES" in
+            */*)
+                break
+                ;;
+            *)
+                echo "Invalid subnet: $TS_ROUTES"
+                echo "Use CIDR format, for example: 192.168.9.0/24 or 10.10.1.0/24"
+                ;;
+        esac
+    done
 
-if [ -f "$CONFIG_FILE" ]; then
-    BACKUP_FILE="$CONFIG_FILE.bak.$(date +%Y%m%d%H%M%S)"
-    echo "Existing config found. Backup: $BACKUP_FILE"
-    cp "$CONFIG_FILE" "$BACKUP_FILE"
-fi
+    echo ""
+    echo "Optional: paste a Tailscale auth key for automatic login."
+    echo "Leave empty to authenticate manually using the URL shown in logs."
+    echo "WARNING: do not publish your auth key in GitHub or documentation."
+    printf "Tailscale auth key []: "
+    read TS_AUTHKEY
 
-cat > "$CONFIG_FILE" <<EOF
+    cat > "$CONFIG_FILE" <<EOF
 TS_BINARY_URL="$BINARY_URL"
 
 # Device name shown in the Tailscale admin panel
@@ -146,25 +206,12 @@ TS_BIN="/tmp/tailscale.combined"
 TS_SOCKET="/tmp/tailscale-runtime/tailscaled.sock"
 EOF
 
-sed -i 's/\r$//' "$CONFIG_FILE" 2>/dev/null
-
-echo ""
-echo "Enabling service on boot..."
-"$INIT_PATH" enable
-
-echo ""
-printf "Start Tailscale service now? [Y/n]: "
-read START_NOW
-START_NOW="${START_NOW:-Y}"
-
-case "$START_NOW" in
-    y|Y|yes|YES)
-        "$INIT_PATH" restart
-        ;;
-    *)
-        echo "Service was enabled but not started."
-        ;;
-esac
+    sed -i 's/\r$//' "$CONFIG_FILE" 2>/dev/null
+else
+    echo ""
+    echo "Keeping current configuration:"
+    cat "$CONFIG_FILE" 2>/dev/null
+fi
 
 install_luci_menu() {
     echo ""
@@ -181,6 +228,7 @@ install_luci_menu() {
                 echo "WARNING: failed to download LuCI installer."
                 echo "You can install it later with:"
                 echo "  wget --no-check-certificate -O /tmp/install-luci-tailscale.sh $LUCI_INSTALLER_URL"
+                echo "  sed -i 's/\\r$//' /tmp/install-luci-tailscale.sh"
                 echo "  chmod +x /tmp/install-luci-tailscale.sh"
                 echo "  sh /tmp/install-luci-tailscale.sh"
                 return 1
@@ -199,23 +247,55 @@ install_luci_menu() {
 }
 
 echo ""
+echo "Enabling service on boot..."
+"$INIT_PATH" enable
+
+# Install LuCI before starting Tailscale.
+# This avoids issues if Tailscale changes DNS/routes during first startup.
+install_luci_menu
+
+echo ""
+printf "Start Tailscale service now? [Y/n]: "
+read START_NOW
+START_NOW="${START_NOW:-Y}"
+
+case "$START_NOW" in
+    y|Y|yes|YES)
+        "$INIT_PATH" restart
+        ;;
+    *)
+        echo "Service was enabled but not started."
+        ;;
+esac
+
+sync
+
+echo ""
 echo "Installation finished."
 echo ""
 echo "Configuration file:"
 echo "  $CONFIG_FILE"
 echo ""
-echo "Downloaded runtime binary:"
+echo "Runtime binary:"
 echo "  $TMP_BINARY"
 echo ""
 echo "Useful commands:"
 echo "  logread -f | grep tailscale"
 echo "  /tmp/tailscale --socket=/tmp/tailscale-runtime/tailscaled.sock status"
 echo "  /tmp/tailscale --socket=/tmp/tailscale-runtime/tailscaled.sock ip"
+echo "  /etc/init.d/tailscale-loader status"
 echo "  /etc/init.d/tailscale-loader restart"
+echo "  /etc/init.d/tailscale-loader stop"
 echo ""
 echo "If no auth key was provided, check the logs for the login URL:"
 echo "  logread | grep -i https"
 echo ""
-echo "Do not forget to approve the advertised subnet route in the Tailscale admin panel:"
-echo "  $TS_ROUTES"
+echo "Do not forget to approve the advertised subnet route in the Tailscale admin panel."
+echo ""
+
+if [ -f "$CONFIG_FILE" ]; then
+    echo "Current advertised route:"
+    grep '^TS_ROUTES=' "$CONFIG_FILE" 2>/dev/null
+fi
+
 echo ""
