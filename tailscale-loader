@@ -94,23 +94,41 @@ stop_tailscale_processes() {
 watchdog_loop() {
     log_msg "watchdog started"
 
+    SOCKET_MISSING_COUNT=0
+
     while true; do
         LOADER_PID="$(get_loader_pid)"
 
         if ! is_pid_running "$LOADER_PID"; then
             log_msg "loader is not running; restarting"
+            stop_tailscale_processes
             start_loader_once
+            SOCKET_MISSING_COUNT=0
+            sleep 60
+            continue
         fi
 
-        if [ -x "$TAILSCALE" ] && [ -S "$TS_SOCKET" ]; then
-            "$TAILSCALE" --socket="$TS_SOCKET" status >/dev/null 2>&1
-            STATUS_RET="$?"
+        if [ -S "$TS_SOCKET" ]; then
+            SOCKET_MISSING_COUNT=0
 
-            if [ "$STATUS_RET" -ne 0 ]; then
-                log_msg "tailscale status returned $STATUS_RET; restarting loader"
+            if [ -x "$TAILSCALE" ]; then
+                "$TAILSCALE" --socket="$TS_SOCKET" status >/dev/null 2>&1
+                STATUS_RET="$?"
+
+                if [ "$STATUS_RET" -ne 0 ]; then
+                    log_msg "tailscale status returned $STATUS_RET; daemon is alive, not restarting"
+                fi
+            fi
+        else
+            SOCKET_MISSING_COUNT=$((SOCKET_MISSING_COUNT + 1))
+            log_msg "tailscale socket not ready yet; count=$SOCKET_MISSING_COUNT"
+
+            if [ "$SOCKET_MISSING_COUNT" -ge 5 ]; then
+                log_msg "tailscale socket missing for too long; restarting loader"
                 stop_loader_once
                 stop_tailscale_processes
                 start_loader_once
+                SOCKET_MISSING_COUNT=0
             fi
         fi
 
