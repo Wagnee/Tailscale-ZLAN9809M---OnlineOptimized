@@ -81,9 +81,10 @@ start_tailscaled() {
 
     log "Starting tailscaled..."
 
-    "$TAILSCALED" \
-        --state="$TS_STATE_DIR/tailscaled.state" \
-        --socket="$TS_SOCKET" &
+   "$TAILSCALED" \
+       --state="$TS_STATE_DIR/tailscaled.state" \
+       --socket="$TS_SOCKET" \
+       --netfilter-mode=off &
 
     TS_PID="$!"
 
@@ -102,7 +103,7 @@ start_tailscaled() {
 tailscale_up() {
     enable_forwarding
 
-    CMD="$TAILSCALE --socket=$TS_SOCKET up --hostname=$TS_HOSTNAME"
+    CMD="$TAILSCALE --socket=$TS_SOCKET up --hostname=$TS_HOSTNAME --accept-dns=false"
 
     if [ -n "$TS_ROUTES" ]; then
         CMD="$CMD --advertise-routes=$TS_ROUTES"
