@@ -8,39 +8,29 @@
 
 ## Tailscale para ZLAN9809M com carregamento otimizado em `/tmp`
 
-Este repositório contém uma versão otimizada do **Tailscale** preparada para uso no roteador industrial **ZLAN9809M**, baseado em **OpenWrt 21.02 / ramips / mipsel_24kc**.
+Este repositório facilita o uso do **Tailscale** no roteador industrial **ZLAN9809M**, baseado em **OpenWrt 21.02 / ramips / mipsel_24kc**.
 
-O objetivo é permitir que o ZLAN9809M funcione como um **Tailscale Subnet Router**, permitindo acesso remoto aos dispositivos conectados à LAN do roteador, mesmo em redes 4G/CGNAT.
+O objetivo é permitir que o ZLAN9809M funcione como um **Tailscale Subnet Router**, oferecendo acesso remoto aos dispositivos conectados à LAN do roteador, mesmo quando a conexão 4G está atrás de **CGNAT**.
 
-Como o ZLAN9809M possui pouco espaço persistente disponível no overlay, este projeto utiliza uma abordagem otimizada:
+Como o ZLAN9809M possui pouco espaço persistente disponível no overlay, esta solução não instala o binário completo do Tailscale permanentemente na flash. Em vez disso:
 
-* O binário `tailscale.combined` é baixado automaticamente para `/tmp`;
-* O binário não ocupa espaço permanente na flash;
-* O estado/autenticação do Tailscale fica salvo em `/etc/tailscale`;
-* O serviço inicia automaticamente no boot;
-* Quando houver internet, o roteador baixa o binário e inicia o Tailscale.
+- o binário `tailscale.combined` é baixado automaticamente para `/tmp`;
+- o binário é recriado a cada boot, sem ocupar espaço permanente;
+- o estado/autenticação do Tailscale fica salvo em `/etc/tailscale`;
+- o serviço inicia automaticamente com o OpenWrt;
+- quando o roteador encontra internet, ele baixa o binário e inicia o Tailscale.
 
 ---
 
-## Por que este projeto existe?
+## Arquivos do repositório
 
-Em muitos projetos industriais, gateways 4G como o **ZLAN9809M** são usados para conectar CLPs, sensores, IHMs, medidores e outros equipamentos remotos.
-
-O problema é que, em redes 4G, normalmente existe **CGNAT**, o que impede acesso remoto direto por redirecionamento de portas.
-
-O Tailscale resolve muito bem esse problema, mas o ZLAN9809M possui recursos limitados, especialmente em armazenamento persistente.
-
-Exemplo real do equipamento testado:
-
-```text
-OpenWrt: 21.02.0
-Arquitetura: mipsel_24kc
-RAM total: ~120 MB
-Overlay livre: ~5.5 MB
-/tmp livre: ~60 MB
-```
-
-Por isso, este projeto usa `/tmp` para armazenar o binário em tempo de execução e mantém apenas as configurações persistentes na flash.
+| Arquivo | Função |
+|---|---|
+| `tailscale.combined` | Binário otimizado do Tailscale para OpenWrt `mipsel_24kc`. |
+| `tailscale-loader.sh` | Script principal. Aguarda internet, baixa o binário para `/tmp`, cria os atalhos `tailscale` e `tailscaled`, inicia o daemon e executa `tailscale up`. |
+| `tailscale-loader` | Serviço init.d/procd do OpenWrt para iniciar o loader automaticamente no boot. |
+| `tailscale.env` | Arquivo de configuração persistente com URL do binário, hostname, rota anunciada e auth key opcional. |
+| `install.sh` | Instalador automático recomendado. Baixa os arquivos do GitHub e pergunta apenas as configurações básicas. |
 
 ---
 
@@ -51,14 +41,14 @@ Internet / 4G / CGNAT
         │
         ▼
 ZLAN9809M
-OpenWrt + Tailscale em /tmp
+OpenWrt + Tailscale carregado em /tmp
         │
         ▼
 LAN local
 192.168.9.0/24 ou 10.10.1.0/24
         │
         ▼
-CLP / IHM / Gateway / Dispositivos industriais
+CLP / IHM / Gateway / sensores / dispositivos industriais
 ```
 
 O ZLAN9809M anuncia a rede local para a sua tailnet usando:
@@ -67,22 +57,22 @@ O ZLAN9809M anuncia a rede local para a sua tailnet usando:
 --advertise-routes
 ```
 
-Assim, qualquer dispositivo autorizado na sua conta Tailscale pode acessar os equipamentos conectados à LAN do roteador.
+Depois que a rota é aprovada no painel do Tailscale, dispositivos autorizados na sua tailnet conseguem acessar os equipamentos conectados à LAN do roteador.
 
 ---
 
 ## Requisitos
 
-Antes de iniciar, confirme que o roteador possui:
+Antes de instalar, confirme que o roteador possui:
 
-* Acesso SSH como `root`;
-* Internet funcionando;
-* `/dev/net/tun` disponível;
-* `wget` instalado;
-* Espaço suficiente em `/tmp`;
-* Uma conta Tailscale.
+- acesso SSH como `root`;
+- internet funcionando;
+- `/dev/net/tun` disponível;
+- `wget` instalado;
+- espaço livre em `/tmp`;
+- uma conta Tailscale.
 
-No ZLAN9809M, você pode verificar com:
+No ZLAN9809M:
 
 ```sh
 ls -l /dev/net/tun
@@ -93,25 +83,7 @@ free -h
 
 ---
 
-## Binário usado
-
-O binário otimizado está neste repositório:
-
-```text
-tailscale.combined
-```
-
-URL direta usada pelo roteador:
-
-```text
-https://raw.githubusercontent.com/Wagnee/Tailscale-ZLAN9809M---OnlineOptimized/main/tailscale.combined
-```
-
-Este arquivo foi pensado para ser baixado para `/tmp` durante a inicialização do dispositivo.
-
----
-
-## Instalação
+## Instalação rápida recomendada
 
 Acesse o roteador via SSH:
 
@@ -119,19 +91,38 @@ Acesse o roteador via SSH:
 ssh root@192.168.9.1
 ```
 
-Substitua o IP conforme a configuração atual do seu ZLAN9809M.
+Baixe e execute o instalador:
+
+```sh
+wget --no-check-certificate -O /tmp/install-tailscale-zlan.sh \
+https://raw.githubusercontent.com/Wagnee/Tailscale-ZLAN9809M---OnlineOptimized/main/install.sh
+
+chmod +x /tmp/install-tailscale-zlan.sh
+sh /tmp/install-tailscale-zlan.sh
+```
+
+O instalador perguntará:
+
+- hostname do dispositivo no Tailscale;
+- rede LAN que será anunciada, por exemplo `192.168.9.0/24` ou `10.10.1.0/24`;
+- auth key opcional do Tailscale;
+- se o serviço deve ser iniciado imediatamente.
+
+> **Importante:** se você não informar `TS_AUTHKEY`, será necessário autenticar manualmente usando a URL exibida nos logs.
 
 ---
 
-## 1. Criar arquivo persistente de configuração
+## Instalação manual
 
-Crie o diretório persistente:
+Use esta opção se quiser instalar os arquivos manualmente ou entender cada etapa.
+
+### 1. Criar diretório persistente
 
 ```sh
 mkdir -p /etc/tailscale
 ```
 
-Crie o arquivo de configuração:
+### 2. Criar configuração persistente
 
 ```sh
 vi /etc/tailscale/tailscale.env
@@ -160,229 +151,32 @@ TS_BIN="/tmp/tailscale.combined"
 TS_SOCKET="/tmp/tailscale-runtime/tailscaled.sock"
 ```
 
-Se o seu roteador usar outra rede, altere `TS_ROUTES`.
-
-Exemplo para rede em faixa 10:
+Se o seu roteador usar uma rede em faixa 10, por exemplo:
 
 ```sh
 TS_ROUTES="10.10.1.0/24"
 ```
 
----
-
-## 2. Criar script de download e inicialização
-
-Crie o script:
+### 3. Instalar o loader
 
 ```sh
-vi /usr/bin/tailscale-loader.sh
-```
+wget --no-check-certificate -O /usr/bin/tailscale-loader.sh \
+https://raw.githubusercontent.com/Wagnee/Tailscale-ZLAN9809M---OnlineOptimized/main/tailscale-loader.sh
 
-Cole o conteúdo abaixo:
-
-```sh
-#!/bin/sh
-
-CONFIG="/etc/tailscale/tailscale.env"
-
-[ -f "$CONFIG" ] && . "$CONFIG"
-
-TS_BINARY_URL="${TS_BINARY_URL:-}"
-TS_HOSTNAME="${TS_HOSTNAME:-zlan9809m}"
-TS_ROUTES="${TS_ROUTES:-}"
-TS_AUTHKEY="${TS_AUTHKEY:-}"
-
-TS_STATE_DIR="${TS_STATE_DIR:-/etc/tailscale}"
-TS_RUNTIME_DIR="${TS_RUNTIME_DIR:-/tmp/tailscale-runtime}"
-TS_BIN="${TS_BIN:-/tmp/tailscale.combined}"
-TS_SOCKET="${TS_SOCKET:-/tmp/tailscale-runtime/tailscaled.sock}"
-
-TAILSCALE="/tmp/tailscale"
-TAILSCALED="/tmp/tailscaled"
-
-log() {
-    logger -t tailscale-loader "$*"
-    echo "[tailscale-loader] $*"
-}
-
-wait_for_internet() {
-    log "Waiting for internet connection..."
-
-    while true; do
-        ping -c 1 -W 3 1.1.1.1 >/dev/null 2>&1 && return 0
-        ping -c 1 -W 3 8.8.8.8 >/dev/null 2>&1 && return 0
-        sleep 10
-    done
-}
-
-download_binary() {
-    if [ -z "$TS_BINARY_URL" ]; then
-        log "Error: TS_BINARY_URL is not configured"
-        return 1
-    fi
-
-    log "Downloading Tailscale binary..."
-
-    rm -f "$TS_BIN" "$TAILSCALE" "$TAILSCALED"
-
-    wget --no-check-certificate -O "$TS_BIN" "$TS_BINARY_URL"
-    if [ $? -ne 0 ]; then
-        log "Error downloading binary"
-        return 1
-    fi
-
-    chmod +x "$TS_BIN"
-
-    ln -sf "$TS_BIN" "$TAILSCALE"
-    ln -sf "$TS_BIN" "$TAILSCALED"
-
-    "$TAILSCALE" --help >/dev/null 2>&1
-    if [ $? -ne 0 ]; then
-        log "Error: binary did not run as tailscale"
-        return 1
-    fi
-
-    "$TAILSCALED" --help >/dev/null 2>&1
-    if [ $? -ne 0 ]; then
-        log "Error: binary did not run as tailscaled"
-        return 1
-    fi
-
-    log "Tailscale binary is ready in /tmp"
-    return 0
-}
-
-enable_forwarding() {
-    echo 1 > /proc/sys/net/ipv4/ip_forward
-}
-
-start_tailscaled() {
-    mkdir -p "$TS_STATE_DIR"
-    mkdir -p "$TS_RUNTIME_DIR"
-
-    rm -f "$TS_SOCKET"
-
-    log "Starting tailscaled..."
-
-    "$TAILSCALED" \
-        --state="$TS_STATE_DIR/tailscaled.state" \
-        --socket="$TS_SOCKET" &
-
-    TS_PID="$!"
-
-    i=0
-    while [ $i -lt 30 ]; do
-        [ -S "$TS_SOCKET" ] && return 0
-        sleep 1
-        i=$((i + 1))
-    done
-
-    log "Error: tailscaled socket was not created"
-    kill "$TS_PID" 2>/dev/null
-    return 1
-}
-
-tailscale_up() {
-    enable_forwarding
-
-    CMD="$TAILSCALE --socket=$TS_SOCKET up --hostname=$TS_HOSTNAME"
-
-    if [ -n "$TS_ROUTES" ]; then
-        CMD="$CMD --advertise-routes=$TS_ROUTES"
-    fi
-
-    if [ -n "$TS_AUTHKEY" ]; then
-        CMD="$CMD --auth-key=$TS_AUTHKEY"
-    fi
-
-    log "Running tailscale up..."
-
-    $CMD
-    RET="$?"
-
-    if [ "$RET" -ne 0 ]; then
-        log "tailscale up returned error: $RET"
-    else
-        log "tailscale up completed"
-    fi
-
-    return "$RET"
-}
-
-main() {
-    wait_for_internet
-
-    while true; do
-        download_binary && break
-        log "Trying again in 30 seconds..."
-        sleep 30
-    done
-
-    start_tailscaled || exit 1
-
-    tailscale_up
-
-    log "tailscaled running with PID $TS_PID"
-    wait "$TS_PID"
-}
-
-main
-```
-
-Dê permissão de execução:
-
-```sh
 chmod +x /usr/bin/tailscale-loader.sh
 ```
 
----
-
-## 3. Criar serviço para iniciar no boot
-
-Crie o serviço:
+### 4. Instalar o serviço de boot
 
 ```sh
-vi /etc/init.d/tailscale-loader
-```
+wget --no-check-certificate -O /etc/init.d/tailscale-loader \
+https://raw.githubusercontent.com/Wagnee/Tailscale-ZLAN9809M---OnlineOptimized/main/tailscale-loader
 
-Cole o conteúdo abaixo:
-
-```sh
-#!/bin/sh /etc/rc.common
-
-START=99
-STOP=10
-USE_PROCD=1
-
-start_service() {
-    procd_open_instance
-    procd_set_param command /usr/bin/tailscale-loader.sh
-    procd_set_param respawn 30 5 5
-    procd_set_param stdout 1
-    procd_set_param stderr 1
-    procd_close_instance
-}
-
-stop_service() {
-    /tmp/tailscale --socket=/tmp/tailscale-runtime/tailscaled.sock down 2>/dev/null
-    killall tailscaled 2>/dev/null
-    killall tailscale.combined 2>/dev/null
-}
-```
-
-Dê permissão:
-
-```sh
 chmod +x /etc/init.d/tailscale-loader
-```
-
-Habilite no boot:
-
-```sh
 /etc/init.d/tailscale-loader enable
 ```
 
-Inicie o serviço:
+### 5. Iniciar
 
 ```sh
 /etc/init.d/tailscale-loader start
@@ -390,15 +184,55 @@ Inicie o serviço:
 
 ---
 
-## 4. Verificar funcionamento
+## Primeiro login no Tailscale
 
-Ver logs em tempo real:
+Se `TS_AUTHKEY` estiver vazio, o serviço deve gerar uma URL de autenticação nos logs.
+
+Verifique com:
+
+```sh
+logread | grep -i "https"
+```
+
+Ou acompanhe em tempo real:
 
 ```sh
 logread -f | grep tailscale
 ```
 
-Ver status do Tailscale:
+Abra a URL exibida, autentique na sua conta Tailscale e aprove o dispositivo.
+
+---
+
+## Aprovar a subnet route
+
+Depois que o dispositivo aparecer online no painel do Tailscale, aprove a rota anunciada.
+
+Exemplos:
+
+```text
+192.168.9.0/24
+```
+
+ou:
+
+```text
+10.10.1.0/24
+```
+
+Sem essa aprovação, o roteador pode aparecer online, mas a rede local atrás dele não ficará acessível.
+
+---
+
+## Comandos úteis
+
+Ver logs:
+
+```sh
+logread -f | grep tailscale
+```
+
+Ver status:
 
 ```sh
 /tmp/tailscale --socket=/tmp/tailscale-runtime/tailscaled.sock status
@@ -416,7 +250,7 @@ Ver processos:
 ps | grep tailscale
 ```
 
-Ver uso de memória:
+Ver memória:
 
 ```sh
 free -h
@@ -428,55 +262,23 @@ Ver espaço em disco:
 df -h
 ```
 
----
-
-## 5. Primeiro login no Tailscale
-
-Se `TS_AUTHKEY=""`, o serviço deve gerar uma URL de autenticação nos logs.
-
-Você pode procurar a URL com:
+Reiniciar o serviço:
 
 ```sh
-logread | grep -i "https"
+/etc/init.d/tailscale-loader restart
 ```
 
-Também é possível rodar manualmente:
+Parar o serviço:
 
 ```sh
-/tmp/tailscale \
-  --socket=/tmp/tailscale-runtime/tailscaled.sock \
-  up \
-  --hostname=zlan9809m-sr2 \
-  --advertise-routes=192.168.9.0/24
+/etc/init.d/tailscale-loader stop
 ```
-
-Abra a URL exibida, autentique na sua conta Tailscale e aprove o dispositivo.
 
 ---
 
-## 6. Aprovar a subnet route
+## Alterar a rede anunciada
 
-Após autenticar o dispositivo, acesse o painel administrativo do Tailscale e aprove a rota anunciada.
-
-Exemplo:
-
-```text
-192.168.9.0/24
-```
-
-ou, se você configurou o roteador para faixa 10:
-
-```text
-10.10.1.0/24
-```
-
-Sem aprovar a rota, o roteador aparecerá online, mas a rede local atrás dele não ficará acessível.
-
----
-
-## 7. Alterar a rede anunciada
-
-Para mudar a rede anunciada, edite:
+Edite:
 
 ```sh
 vi /etc/tailscale/tailscale.env
@@ -494,7 +296,7 @@ Para, por exemplo:
 TS_ROUTES="10.10.1.0/24"
 ```
 
-Reinicie o serviço:
+Reinicie:
 
 ```sh
 /etc/init.d/tailscale-loader restart
@@ -504,9 +306,9 @@ Depois aprove a nova rota no painel do Tailscale.
 
 ---
 
-## 8. Testar de outro dispositivo
+## Testar de outro dispositivo
 
-De outro dispositivo conectado à mesma tailnet, teste:
+De outro dispositivo conectado à mesma tailnet:
 
 ```sh
 ping 192.168.9.1
@@ -518,7 +320,7 @@ ou:
 ping 10.10.1.1
 ```
 
-Também tente acessar a interface web do roteador:
+Também é possível acessar a interface web do roteador:
 
 ```text
 http://192.168.9.1
@@ -536,20 +338,20 @@ http://10.10.1.1
 
 Este repositório é público. Portanto:
 
-* Nunca publique sua `TS_AUTHKEY`;
-* Nunca publique o arquivo `tailscaled.state`;
-* Nunca publique arquivos reais de configuração do seu cliente;
-* Use nomes de host diferentes para cada roteador;
-* Use uma subnet diferente para cada instalação;
-* Aprove apenas as rotas necessárias no painel Tailscale.
+- nunca publique sua `TS_AUTHKEY`;
+- nunca publique o arquivo `tailscaled.state`;
+- nunca publique configurações reais de clientes;
+- use um hostname diferente para cada roteador;
+- use uma sub-rede diferente para cada instalação;
+- aprove apenas as rotas necessárias no painel do Tailscale.
 
-O arquivo sensível é:
+Arquivo sensível:
 
 ```text
 /etc/tailscale/tailscaled.state
 ```
 
-Ele identifica o dispositivo dentro da sua tailnet. Não compartilhe esse arquivo.
+Esse arquivo identifica o dispositivo dentro da sua tailnet. Não compartilhe.
 
 ---
 
@@ -557,19 +359,10 @@ Ele identifica o dispositivo dentro da sua tailnet. Não compartilhe esse arquiv
 
 ### O serviço não inicia
 
-Verifique logs:
-
 ```sh
 logread | grep tailscale
-```
-
-Teste o script manualmente:
-
-```sh
 /usr/bin/tailscale-loader.sh
 ```
-
----
 
 ### O binário não baixa
 
@@ -583,14 +376,13 @@ ping -c 3 8.8.8.8
 Teste o download:
 
 ```sh
-wget --no-check-certificate -O /tmp/tailscale.combined https://raw.githubusercontent.com/Wagnee/Tailscale-ZLAN9809M---OnlineOptimized/main/tailscale.combined
+wget --no-check-certificate -O /tmp/tailscale.combined \
+https://raw.githubusercontent.com/Wagnee/Tailscale-ZLAN9809M---OnlineOptimized/main/tailscale.combined
 ```
 
----
+### O Tailscale sobe, mas a LAN não responde
 
-### O Tailscale sobe, mas não acesso a LAN
-
-Confirme o IP forward:
+Verifique o IP forwarding:
 
 ```sh
 cat /proc/sys/net/ipv4/ip_forward
@@ -602,17 +394,13 @@ Deve retornar:
 1
 ```
 
-Confirme se a rota foi aprovada no painel Tailscale.
-
-Confirme se `TS_ROUTES` está correto:
+Confirme se a rota foi aprovada no painel Tailscale e se `TS_ROUTES` está correto:
 
 ```sh
 cat /etc/tailscale/tailscale.env
 ```
 
----
-
-### Verificar interface Tailscale
+### Verificar interface e rotas
 
 ```sh
 ip addr
@@ -621,19 +409,9 @@ ip route
 
 ---
 
-### Reiniciar serviço
+## Como o binário foi gerado
 
-```sh
-/etc/init.d/tailscale-loader restart
-```
-
----
-
-## Como este binário foi gerado
-
-O binário usado neste projeto foi otimizado para dispositivos OpenWrt com arquitetura MIPS little-endian.
-
-Exemplo de build:
+Exemplo de build usado para gerar um binário otimizado para OpenWrt MIPS little-endian:
 
 ```sh
 git clean -xfd
@@ -654,7 +432,7 @@ du -h tailscale.combined
 
 ## Aviso
 
-Este projeto é experimental e foi criado para ajudar usuários que precisam rodar Tailscale em roteadores industriais com recursos limitados.
+Este projeto é experimental e foi criado para ajudar usuários que precisam rodar Tailscale em roteadores industriais com poucos recursos.
 
 Use por sua conta e risco. Teste bem antes de aplicar em produção.
 
@@ -664,39 +442,29 @@ Use por sua conta e risco. Teste bem antes de aplicar em produção.
 
 ## Tailscale for ZLAN9809M with optimized `/tmp` runtime loading
 
-This repository provides an optimized **Tailscale** binary and startup method for the **ZLAN9809M** industrial router, based on **OpenWrt 21.02 / ramips / mipsel_24kc**.
+This repository makes it easier to run **Tailscale** on the **ZLAN9809M** industrial router, based on **OpenWrt 21.02 / ramips / mipsel_24kc**.
 
-The goal is to allow the ZLAN9809M to work as a **Tailscale Subnet Router**, providing remote access to devices connected to the router LAN, even behind 4G/CGNAT networks.
+The goal is to allow the ZLAN9809M to work as a **Tailscale Subnet Router**, providing remote access to devices connected to the router LAN, even when the 4G connection is behind **CGNAT**.
 
-Because the ZLAN9809M has very limited persistent overlay storage, this project uses an optimized approach:
+Because the ZLAN9809M has very limited persistent overlay storage, this solution does not permanently install the full Tailscale binary into flash. Instead:
 
-* The `tailscale.combined` binary is automatically downloaded to `/tmp`;
-* The binary does not permanently consume flash storage;
-* Tailscale state/authentication is stored persistently in `/etc/tailscale`;
-* The service starts automatically on boot;
-* Once internet is available, the router downloads the binary and starts Tailscale.
+- the `tailscale.combined` binary is automatically downloaded to `/tmp`;
+- the binary is recreated at each boot without permanently consuming flash storage;
+- Tailscale state/authentication is stored in `/etc/tailscale`;
+- the service starts automatically with OpenWrt;
+- once the router has internet access, it downloads the binary and starts Tailscale.
 
 ---
 
-## Why this project exists
+## Repository files
 
-In many industrial projects, 4G gateways such as the **ZLAN9809M** are used to connect PLCs, sensors, HMIs, meters, and other remote devices.
-
-The problem is that 4G networks often use **CGNAT**, which prevents direct inbound access using port forwarding.
-
-Tailscale solves this very well, but the ZLAN9809M has limited resources, especially persistent flash storage.
-
-Example from a tested device:
-
-```text
-OpenWrt: 21.02.0
-Architecture: mipsel_24kc
-Total RAM: ~120 MB
-Free overlay: ~5.5 MB
-Free /tmp: ~60 MB
-```
-
-For this reason, this project stores the binary in `/tmp` at runtime and keeps only the persistent configuration and state in flash.
+| File | Purpose |
+|---|---|
+| `tailscale.combined` | Optimized Tailscale binary for OpenWrt `mipsel_24kc`. |
+| `tailscale-loader.sh` | Main loader script. Waits for internet, downloads the binary to `/tmp`, creates the `tailscale` and `tailscaled` symlinks, starts the daemon, and runs `tailscale up`. |
+| `tailscale-loader` | OpenWrt init.d/procd service that starts the loader on boot. |
+| `tailscale.env` | Persistent configuration file with binary URL, hostname, advertised route, and optional auth key. |
+| `install.sh` | Recommended automatic installer. Downloads the repository files and asks only for the basic configuration. |
 
 ---
 
@@ -707,14 +475,14 @@ Internet / 4G / CGNAT
         │
         ▼
 ZLAN9809M
-OpenWrt + Tailscale in /tmp
+OpenWrt + Tailscale loaded in /tmp
         │
         ▼
 Local LAN
 192.168.9.0/24 or 10.10.1.0/24
         │
         ▼
-PLC / HMI / Gateway / Industrial devices
+PLC / HMI / Gateway / sensors / industrial devices
 ```
 
 The ZLAN9809M advertises the local network to your tailnet using:
@@ -723,22 +491,22 @@ The ZLAN9809M advertises the local network to your tailnet using:
 --advertise-routes
 ```
 
-This allows any authorized device in your Tailscale account to access devices connected to the router LAN.
+After the route is approved in the Tailscale admin panel, authorized devices in your tailnet can access the devices connected to the router LAN.
 
 ---
 
 ## Requirements
 
-Before starting, make sure the router has:
+Before installing, make sure the router has:
 
-* SSH access as `root`;
-* Working internet access;
-* `/dev/net/tun` available;
-* `wget` installed;
-* Enough free space in `/tmp`;
-* A Tailscale account.
+- SSH access as `root`;
+- working internet access;
+- `/dev/net/tun` available;
+- `wget` installed;
+- free space in `/tmp`;
+- a Tailscale account.
 
-On the ZLAN9809M, you can check with:
+On the ZLAN9809M:
 
 ```sh
 ls -l /dev/net/tun
@@ -749,45 +517,46 @@ free -h
 
 ---
 
-## Binary used
+## Recommended quick installation
 
-The optimized binary is available in this repository:
-
-```text
-tailscale.combined
-```
-
-Direct download URL used by the router:
-
-```text
-https://raw.githubusercontent.com/Wagnee/Tailscale-ZLAN9809M---OnlineOptimized/main/tailscale.combined
-```
-
-This file is intended to be downloaded to `/tmp` during device startup.
-
----
-
-## Installation
-
-Access the router via SSH:
+Access the router through SSH:
 
 ```sh
 ssh root@192.168.9.1
 ```
 
-Replace the IP address according to your current ZLAN9809M configuration.
+Download and run the installer:
+
+```sh
+wget --no-check-certificate -O /tmp/install-tailscale-zlan.sh \
+https://raw.githubusercontent.com/Wagnee/Tailscale-ZLAN9809M---OnlineOptimized/main/install.sh
+
+chmod +x /tmp/install-tailscale-zlan.sh
+sh /tmp/install-tailscale-zlan.sh
+```
+
+The installer will ask for:
+
+- Tailscale device hostname;
+- LAN subnet to advertise, for example `192.168.9.0/24` or `10.10.1.0/24`;
+- optional Tailscale auth key;
+- whether the service should be started immediately.
+
+> **Important:** if you do not provide `TS_AUTHKEY`, you must authenticate manually using the URL shown in the logs.
 
 ---
 
-## 1. Create the persistent configuration file
+## Manual installation
 
-Create the persistent directory:
+Use this option if you want to install the files manually or understand each step.
+
+### 1. Create the persistent directory
 
 ```sh
 mkdir -p /etc/tailscale
 ```
 
-Create the configuration file:
+### 2. Create the persistent configuration
 
 ```sh
 vi /etc/tailscale/tailscale.env
@@ -816,229 +585,32 @@ TS_BIN="/tmp/tailscale.combined"
 TS_SOCKET="/tmp/tailscale-runtime/tailscaled.sock"
 ```
 
-If your router uses a different LAN subnet, change `TS_ROUTES`.
-
-Example for a 10.x subnet:
+For a 10.x subnet, for example:
 
 ```sh
 TS_ROUTES="10.10.1.0/24"
 ```
 
----
-
-## 2. Create the download and startup script
-
-Create the script:
+### 3. Install the loader
 
 ```sh
-vi /usr/bin/tailscale-loader.sh
-```
+wget --no-check-certificate -O /usr/bin/tailscale-loader.sh \
+https://raw.githubusercontent.com/Wagnee/Tailscale-ZLAN9809M---OnlineOptimized/main/tailscale-loader.sh
 
-Paste the content below:
-
-```sh
-#!/bin/sh
-
-CONFIG="/etc/tailscale/tailscale.env"
-
-[ -f "$CONFIG" ] && . "$CONFIG"
-
-TS_BINARY_URL="${TS_BINARY_URL:-}"
-TS_HOSTNAME="${TS_HOSTNAME:-zlan9809m}"
-TS_ROUTES="${TS_ROUTES:-}"
-TS_AUTHKEY="${TS_AUTHKEY:-}"
-
-TS_STATE_DIR="${TS_STATE_DIR:-/etc/tailscale}"
-TS_RUNTIME_DIR="${TS_RUNTIME_DIR:-/tmp/tailscale-runtime}"
-TS_BIN="${TS_BIN:-/tmp/tailscale.combined}"
-TS_SOCKET="${TS_SOCKET:-/tmp/tailscale-runtime/tailscaled.sock}"
-
-TAILSCALE="/tmp/tailscale"
-TAILSCALED="/tmp/tailscaled"
-
-log() {
-    logger -t tailscale-loader "$*"
-    echo "[tailscale-loader] $*"
-}
-
-wait_for_internet() {
-    log "Waiting for internet connection..."
-
-    while true; do
-        ping -c 1 -W 3 1.1.1.1 >/dev/null 2>&1 && return 0
-        ping -c 1 -W 3 8.8.8.8 >/dev/null 2>&1 && return 0
-        sleep 10
-    done
-}
-
-download_binary() {
-    if [ -z "$TS_BINARY_URL" ]; then
-        log "Error: TS_BINARY_URL is not configured"
-        return 1
-    fi
-
-    log "Downloading Tailscale binary..."
-
-    rm -f "$TS_BIN" "$TAILSCALE" "$TAILSCALED"
-
-    wget --no-check-certificate -O "$TS_BIN" "$TS_BINARY_URL"
-    if [ $? -ne 0 ]; then
-        log "Error downloading binary"
-        return 1
-    fi
-
-    chmod +x "$TS_BIN"
-
-    ln -sf "$TS_BIN" "$TAILSCALE"
-    ln -sf "$TS_BIN" "$TAILSCALED"
-
-    "$TAILSCALE" --help >/dev/null 2>&1
-    if [ $? -ne 0 ]; then
-        log "Error: binary did not run as tailscale"
-        return 1
-    fi
-
-    "$TAILSCALED" --help >/dev/null 2>&1
-    if [ $? -ne 0 ]; then
-        log "Error: binary did not run as tailscaled"
-        return 1
-    fi
-
-    log "Tailscale binary is ready in /tmp"
-    return 0
-}
-
-enable_forwarding() {
-    echo 1 > /proc/sys/net/ipv4/ip_forward
-}
-
-start_tailscaled() {
-    mkdir -p "$TS_STATE_DIR"
-    mkdir -p "$TS_RUNTIME_DIR"
-
-    rm -f "$TS_SOCKET"
-
-    log "Starting tailscaled..."
-
-    "$TAILSCALED" \
-        --state="$TS_STATE_DIR/tailscaled.state" \
-        --socket="$TS_SOCKET" &
-
-    TS_PID="$!"
-
-    i=0
-    while [ $i -lt 30 ]; do
-        [ -S "$TS_SOCKET" ] && return 0
-        sleep 1
-        i=$((i + 1))
-    done
-
-    log "Error: tailscaled socket was not created"
-    kill "$TS_PID" 2>/dev/null
-    return 1
-}
-
-tailscale_up() {
-    enable_forwarding
-
-    CMD="$TAILSCALE --socket=$TS_SOCKET up --hostname=$TS_HOSTNAME"
-
-    if [ -n "$TS_ROUTES" ]; then
-        CMD="$CMD --advertise-routes=$TS_ROUTES"
-    fi
-
-    if [ -n "$TS_AUTHKEY" ]; then
-        CMD="$CMD --auth-key=$TS_AUTHKEY"
-    fi
-
-    log "Running tailscale up..."
-
-    $CMD
-    RET="$?"
-
-    if [ "$RET" -ne 0 ]; then
-        log "tailscale up returned error: $RET"
-    else
-        log "tailscale up completed"
-    fi
-
-    return "$RET"
-}
-
-main() {
-    wait_for_internet
-
-    while true; do
-        download_binary && break
-        log "Trying again in 30 seconds..."
-        sleep 30
-    done
-
-    start_tailscaled || exit 1
-
-    tailscale_up
-
-    log "tailscaled running with PID $TS_PID"
-    wait "$TS_PID"
-}
-
-main
-```
-
-Make it executable:
-
-```sh
 chmod +x /usr/bin/tailscale-loader.sh
 ```
 
----
-
-## 3. Create the boot service
-
-Create the service:
+### 4. Install the boot service
 
 ```sh
-vi /etc/init.d/tailscale-loader
-```
+wget --no-check-certificate -O /etc/init.d/tailscale-loader \
+https://raw.githubusercontent.com/Wagnee/Tailscale-ZLAN9809M---OnlineOptimized/main/tailscale-loader
 
-Paste the content below:
-
-```sh
-#!/bin/sh /etc/rc.common
-
-START=99
-STOP=10
-USE_PROCD=1
-
-start_service() {
-    procd_open_instance
-    procd_set_param command /usr/bin/tailscale-loader.sh
-    procd_set_param respawn 30 5 5
-    procd_set_param stdout 1
-    procd_set_param stderr 1
-    procd_close_instance
-}
-
-stop_service() {
-    /tmp/tailscale --socket=/tmp/tailscale-runtime/tailscaled.sock down 2>/dev/null
-    killall tailscaled 2>/dev/null
-    killall tailscale.combined 2>/dev/null
-}
-```
-
-Make it executable:
-
-```sh
 chmod +x /etc/init.d/tailscale-loader
-```
-
-Enable it on boot:
-
-```sh
 /etc/init.d/tailscale-loader enable
 ```
 
-Start the service:
+### 5. Start
 
 ```sh
 /etc/init.d/tailscale-loader start
@@ -1046,93 +618,101 @@ Start the service:
 
 ---
 
-## 4. Verify that it is working
+## First Tailscale login
 
-Watch logs in real time:
+If `TS_AUTHKEY` is empty, the service should generate an authentication URL in the logs.
 
-```sh
-logread -f | grep tailscale
-```
-
-Check Tailscale status:
-
-```sh
-/tmp/tailscale --socket=/tmp/tailscale-runtime/tailscaled.sock status
-```
-
-Check Tailscale IP:
-
-```sh
-/tmp/tailscale --socket=/tmp/tailscale-runtime/tailscaled.sock ip
-```
-
-Check processes:
-
-```sh
-ps | grep tailscale
-```
-
-Check memory usage:
-
-```sh
-free -h
-```
-
-Check disk usage:
-
-```sh
-df -h
-```
-
----
-
-## 5. First Tailscale login
-
-If `TS_AUTHKEY=""`, the service should generate an authentication URL in the logs.
-
-You can find it with:
+Check with:
 
 ```sh
 logread | grep -i "https"
 ```
 
-You can also run it manually:
+Or watch in real time:
 
 ```sh
-/tmp/tailscale \
-  --socket=/tmp/tailscale-runtime/tailscaled.sock \
-  up \
-  --hostname=zlan9809m-sr2 \
-  --advertise-routes=192.168.9.0/24
+logread -f | grep tailscale
 ```
 
 Open the displayed URL, authenticate with your Tailscale account, and approve the device.
 
 ---
 
-## 6. Approve the subnet route
+## Approve the subnet route
 
-After authenticating the device, open the Tailscale admin panel and approve the advertised route.
+After the device appears online in the Tailscale admin panel, approve the advertised route.
 
-Example:
+Examples:
 
 ```text
 192.168.9.0/24
 ```
 
-or, if you configured the router to use a 10.x subnet:
+or:
 
 ```text
 10.10.1.0/24
 ```
 
-Without approving the route, the router will appear online, but the LAN behind it will not be reachable.
+Without this approval, the router may appear online, but the LAN behind it will not be reachable.
 
 ---
 
-## 7. Change the advertised network
+## Useful commands
 
-To change the advertised subnet, edit:
+View logs:
+
+```sh
+logread -f | grep tailscale
+```
+
+View status:
+
+```sh
+/tmp/tailscale --socket=/tmp/tailscale-runtime/tailscaled.sock status
+```
+
+View Tailscale IP:
+
+```sh
+/tmp/tailscale --socket=/tmp/tailscale-runtime/tailscaled.sock ip
+```
+
+View processes:
+
+```sh
+ps | grep tailscale
+```
+
+View memory:
+
+```sh
+free -h
+```
+
+View disk usage:
+
+```sh
+df -h
+```
+
+Restart the service:
+
+```sh
+/etc/init.d/tailscale-loader restart
+```
+
+Stop the service:
+
+```sh
+/etc/init.d/tailscale-loader stop
+```
+
+---
+
+## Change the advertised network
+
+Edit:
 
 ```sh
 vi /etc/tailscale/tailscale.env
@@ -1150,7 +730,7 @@ To, for example:
 TS_ROUTES="10.10.1.0/24"
 ```
 
-Restart the service:
+Restart:
 
 ```sh
 /etc/init.d/tailscale-loader restart
@@ -1160,9 +740,9 @@ Then approve the new route in the Tailscale admin panel.
 
 ---
 
-## 8. Test from another device
+## Test from another device
 
-From another device connected to the same tailnet, test:
+From another device connected to the same tailnet:
 
 ```sh
 ping 192.168.9.1
@@ -1174,7 +754,7 @@ or:
 ping 10.10.1.1
 ```
 
-You can also try accessing the router web interface:
+You can also access the router web interface:
 
 ```text
 http://192.168.9.1
@@ -1188,24 +768,24 @@ http://10.10.1.1
 
 ---
 
-## Security notes
+## Security
 
 This repository is public. Therefore:
 
-* Never publish your `TS_AUTHKEY`;
-* Never publish your `tailscaled.state` file;
-* Never publish real customer configuration files;
-* Use a unique hostname for each router;
-* Use a different subnet for each installation;
-* Approve only the required routes in the Tailscale admin panel.
+- never publish your `TS_AUTHKEY`;
+- never publish the `tailscaled.state` file;
+- never publish real customer configuration;
+- use a different hostname for each router;
+- use a different subnet for each installation;
+- approve only the required routes in the Tailscale admin panel.
 
-The sensitive file is:
+Sensitive file:
 
 ```text
 /etc/tailscale/tailscaled.state
 ```
 
-It identifies the device in your tailnet. Do not share it.
+This file identifies the device inside your tailnet. Do not share it.
 
 ---
 
@@ -1213,23 +793,14 @@ It identifies the device in your tailnet. Do not share it.
 
 ### Service does not start
 
-Check logs:
-
 ```sh
 logread | grep tailscale
-```
-
-Run the script manually:
-
-```sh
 /usr/bin/tailscale-loader.sh
 ```
 
----
-
 ### Binary does not download
 
-Test internet access:
+Test internet:
 
 ```sh
 ping -c 3 1.1.1.1
@@ -1239,10 +810,9 @@ ping -c 3 8.8.8.8
 Test the download:
 
 ```sh
-wget --no-check-certificate -O /tmp/tailscale.combined https://raw.githubusercontent.com/Wagnee/Tailscale-ZLAN9809M---OnlineOptimized/main/tailscale.combined
+wget --no-check-certificate -O /tmp/tailscale.combined \
+https://raw.githubusercontent.com/Wagnee/Tailscale-ZLAN9809M---OnlineOptimized/main/tailscale.combined
 ```
-
----
 
 ### Tailscale starts, but LAN access does not work
 
@@ -1258,17 +828,13 @@ It should return:
 1
 ```
 
-Make sure the subnet route was approved in the Tailscale admin panel.
-
-Check if `TS_ROUTES` is correct:
+Make sure the route was approved in the Tailscale admin panel and `TS_ROUTES` is correct:
 
 ```sh
 cat /etc/tailscale/tailscale.env
 ```
 
----
-
-### Check Tailscale interface
+### Check interface and routes
 
 ```sh
 ip addr
@@ -1277,19 +843,9 @@ ip route
 
 ---
 
-### Restart the service
+## How the binary was built
 
-```sh
-/etc/init.d/tailscale-loader restart
-```
-
----
-
-## How this binary was built
-
-The binary used in this project was optimized for OpenWrt devices using MIPS little-endian architecture.
-
-Example build:
+Example build used to generate an optimized binary for OpenWrt MIPS little-endian:
 
 ```sh
 git clean -xfd
