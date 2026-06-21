@@ -36,6 +36,7 @@ mkdir -p "$VIEW_DIR"
 
 echo "Downloading LuCI controller..."
 wget --no-check-certificate -O "$CONTROLLER_PATH" "$CONTROLLER_URL"
+
 if [ $? -ne 0 ]; then
     echo "ERROR: failed to download controller"
     exit 1
@@ -43,6 +44,7 @@ fi
 
 echo "Downloading LuCI view..."
 wget --no-check-certificate -O "$VIEW_PATH" "$VIEW_URL"
+
 if [ $? -ne 0 ]; then
     echo "ERROR: failed to download view"
     exit 1
@@ -54,15 +56,13 @@ sed -i 's/\r$//' "$VIEW_PATH" 2>/dev/null
 rm -f /tmp/luci-indexcache 2>/dev/null
 rm -rf /tmp/luci-modulecache 2>/dev/null
 
-/etc/init.d/uhttpd restart 2>/dev/null
-
-rm -f /tmp/luci-indexcache
-rm -rf /tmp/luci-modulecache
-/etc/init.d/uhttpd restart
+if [ -x /etc/init.d/uhttpd ]; then
+    /etc/init.d/uhttpd restart 2>/dev/null
+fi
 
 echo ""
 echo "LuCI menu installed."
 echo ""
 echo "Open:"
-echo "  System web interface → Services → Tailscale ZLAN"
+echo "  Services -> Tailscale ZLAN"
 echo ""
