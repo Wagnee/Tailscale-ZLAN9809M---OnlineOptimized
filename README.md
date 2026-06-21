@@ -225,11 +225,11 @@ To remove this solution from the router, use the uninstall script.
 Run this in terminal:
 
 ```text
-wget -O /tmp/install-tailscale-zlan.sh https://raw.githubusercontent.com/Wagnee/Tailscale-ZLAN9809M---OnlineOptimized/main/uninstall.sh
+wget -O /tmp/uninstall-tailscale-zlan.sh https://raw.githubusercontent.com/Wagnee/Tailscale-ZLAN9809M---OnlineOptimized/main/uninstall.sh
 
-chmod +x /tmp/install-tailscale-zlan.sh
+chmod +x /tmp/uninstall-tailscale-zlan.sh
 
-sh /tmp/install-tailscale-zlan.sh
+sh /tmp/uninstall-tailscale-zlan.sh
 ```
 
 Required file:
@@ -267,11 +267,11 @@ Para remover esta solução do roteador, use o script de desinstalação.
 Execute esses comandos em sequência no terminal:
 
 ```text
-wget -O /tmp/install-tailscale-zlan.sh https://raw.githubusercontent.com/Wagnee/Tailscale-ZLAN9809M---OnlineOptimized/main/install.sh
+wget -O /tmp/uninstall-tailscale-zlan.sh https://raw.githubusercontent.com/Wagnee/Tailscale-ZLAN9809M---OnlineOptimized/main/uninstall.sh
 
-chmod +x /tmp/install-tailscale-zlan.sh
+chmod +x /tmp/uninstall-tailscale-zlan.sh
 
-sh /tmp/install-tailscale-zlan.sh
+sh /tmp/uninstall-tailscale-zlan.sh
 ```
 
 Arquivo necessário:
