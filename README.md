@@ -24,10 +24,12 @@ Use the `install.sh` file from this repository.
 
 The installer downloads the required files, creates or preserves the Tailscale configuration, installs the OpenWrt startup service, optionally installs the LuCI web interface, and can start the service immediately.
 
-Required file:
+Required commands:
 
 ```text
-install.sh
+wget -O /tmp/install-tailscale-zlan.sh https://raw.githubusercontent.com/Wagnee/Tailscale-ZLAN9809M---OnlineOptimized/main/install.sh
+chmod +x /tmp/install-tailscale-zlan.sh
+sh /tmp/install-tailscale-zlan.sh
 ```
 
 During installation, you may be asked for:
@@ -194,10 +196,12 @@ Use o arquivo `install.sh` deste repositório.
 
 O instalador baixa os arquivos necessários, cria ou preserva a configuração do Tailscale, instala o serviço de inicialização do OpenWrt, oferece a instalação da interface LuCI e pode iniciar o serviço imediatamente.
 
-Arquivo necessário:
+Comando necessário:
 
 ```text
-install.sh
+wget -O /tmp/install-tailscale-zlan.sh https://raw.githubusercontent.com/Wagnee/Tailscale-ZLAN9809M---OnlineOptimized/main/install.sh
+chmod +x /tmp/install-tailscale-zlan.sh
+sh /tmp/install-tailscale-zlan.sh
 ```
 
 Durante a instalação, você poderá escolher:
