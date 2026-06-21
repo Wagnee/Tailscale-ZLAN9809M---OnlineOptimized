@@ -1,0 +1,5 @@
+* text=auto eol=lf
+*.sh text eol=lf
+tailscale-loader text eol=lf
+tailscale.env text eol=lf
+install.sh text eol=lf
