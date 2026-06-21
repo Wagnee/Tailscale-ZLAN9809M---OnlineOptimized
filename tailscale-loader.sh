@@ -81,10 +81,9 @@ start_tailscaled() {
 
     log "Starting tailscaled..."
 
-   "$TAILSCALED" \
-       --state="$TS_STATE_DIR/tailscaled.state" \
-       --socket="$TS_SOCKET" \
-       --netfilter-mode=off &
+    "$TAILSCALED" \
+        --state="$TS_STATE_DIR/tailscaled.state" \
+        --socket="$TS_SOCKET" &
 
     TS_PID="$!"
 
