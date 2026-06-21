@@ -4,6 +4,16 @@
 
 Use the `install.sh` file from this repository.
 
+Run this in terminal:
+
+```text
+wget -O /tmp/install-tailscale-zlan.sh https://raw.githubusercontent.com/Wagnee/Tailscale-ZLAN9809M---OnlineOptimized/main/install.sh
+
+chmod +x /tmp/install-tailscale-zlan.sh
+
+sh /tmp/install-tailscale-zlan.sh
+```
+
 This is the recommended installation method. The installer downloads the required files, creates the Tailscale configuration, installs the OpenWrt startup service, and optionally installs the LuCI web interface.
 
 During installation, you will be asked for:
@@ -21,6 +31,16 @@ install.sh
 ```
 
 Use o arquivo `install.sh` deste repositório.
+
+Execute esses comandos em sequência no terminal:
+
+```text
+wget -O /tmp/install-tailscale-zlan.sh https://raw.githubusercontent.com/Wagnee/Tailscale-ZLAN9809M---OnlineOptimized/main/install.sh
+
+chmod +x /tmp/install-tailscale-zlan.sh
+
+sh /tmp/install-tailscale-zlan.sh
+```
 
 Este é o método de instalação recomendado. O instalador baixa os arquivos necessários, cria a configuração do Tailscale, instala o serviço de inicialização do OpenWrt e oferece a opção de instalar a interface web LuCI.
 
