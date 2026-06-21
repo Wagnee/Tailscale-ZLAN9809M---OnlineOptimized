@@ -184,6 +184,16 @@ O instalador automático também pode instalar esse menu ao final do processo de
 
 To remove this solution from the router, use the uninstall script.
 
+Run this in terminal:
+
+```text
+wget -O /tmp/install-tailscale-zlan.sh https://raw.githubusercontent.com/Wagnee/Tailscale-ZLAN9809M---OnlineOptimized/main/uninstall.sh
+
+chmod +x /tmp/install-tailscale-zlan.sh
+
+sh /tmp/install-tailscale-zlan.sh
+```
+
 Required file:
 
 ```text
@@ -215,6 +225,16 @@ Keeping `/etc/tailscale` is useful if you plan to reinstall later and want to pr
 Removing `/etc/tailscale` is useful if you want to completely remove this solution from the router.
 
 Para remover esta solução do roteador, use o script de desinstalação.
+
+Execute esses comandos em sequência no terminal:
+
+```text
+wget -O /tmp/install-tailscale-zlan.sh https://raw.githubusercontent.com/Wagnee/Tailscale-ZLAN9809M---OnlineOptimized/main/install.sh
+
+chmod +x /tmp/install-tailscale-zlan.sh
+
+sh /tmp/install-tailscale-zlan.sh
+```
 
 Arquivo necessário:
 
