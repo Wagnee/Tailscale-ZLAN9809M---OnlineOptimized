@@ -8,6 +8,7 @@ BINARY_URL="$RAW_BASE/tailscale.combined"
 LOADER_URL="$RAW_BASE/tailscale-loader.sh"
 INIT_URL="$RAW_BASE/tailscale-loader"
 ENV_URL="$RAW_BASE/tailscale.env"
+LUCI_INSTALLER_URL="$RAW_BASE/install-luci.sh"
 
 CONFIG_DIR="/etc/tailscale"
 CONFIG_FILE="$CONFIG_DIR/tailscale.env"
@@ -164,6 +165,38 @@ case "$START_NOW" in
         echo "Service was enabled but not started."
         ;;
 esac
+
+install_luci_menu() {
+    echo ""
+    printf "Install LuCI web menu? [Y/n]: "
+    read INSTALL_LUCI
+    INSTALL_LUCI="${INSTALL_LUCI:-Y}"
+
+    case "$INSTALL_LUCI" in
+        y|Y|yes|YES)
+            echo "Downloading LuCI menu installer..."
+
+            wget --no-check-certificate -O /tmp/install-luci-tailscale.sh "$LUCI_INSTALLER_URL"
+            if [ $? -ne 0 ]; then
+                echo "WARNING: failed to download LuCI installer."
+                echo "You can install it later with:"
+                echo "  wget --no-check-certificate -O /tmp/install-luci-tailscale.sh $LUCI_INSTALLER_URL"
+                echo "  chmod +x /tmp/install-luci-tailscale.sh"
+                echo "  sh /tmp/install-luci-tailscale.sh"
+                return 1
+            fi
+
+            sed -i 's/\r$//' /tmp/install-luci-tailscale.sh 2>/dev/null
+            chmod +x /tmp/install-luci-tailscale.sh
+
+            echo "Running LuCI menu installer..."
+            sh /tmp/install-luci-tailscale.sh
+            ;;
+        *)
+            echo "LuCI menu installation skipped."
+            ;;
+    esac
+}
 
 echo ""
 echo "Installation finished."
