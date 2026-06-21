@@ -1,20 +1,200 @@
 #!/bin/sh /etc/rc.common
+# OpenWrt init.d service for Tailscale-ZLAN9809M Online Optimized
+# Compatible fallback mode without procd dependency.
+#
+# This service starts /usr/bin/tailscale-loader.sh in background.
+# The main loader script is responsible for:
+#   - waiting for internet
+#   - downloading tailscale.combined to /tmp
+#   - starting tailscaled
+#   - running tailscale up
+#
+# This init script adds:
+#   - PID tracking
+#   - restart support
+#   - basic watchdog loop
+#   - automatic restart if tailscaled exits or the loader dies
 
 START=99
 STOP=10
-USE_PROCD=1
 
-start_service() {
-    procd_open_instance
-    procd_set_param command /usr/bin/tailscale-loader.sh
-    procd_set_param respawn 30 5 5
-    procd_set_param stdout 1
-    procd_set_param stderr 1
-    procd_close_instance
+PIDFILE="/var/run/tailscale-loader.pid"
+WATCHDOG_PIDFILE="/var/run/tailscale-loader-watchdog.pid"
+LOGFILE="/tmp/tailscale-loader.log"
+
+LOADER="/usr/bin/tailscale-loader.sh"
+TAILSCALE="/tmp/tailscale"
+TS_SOCKET="/tmp/tailscale-runtime/tailscaled.sock"
+
+log_msg() {
+    echo "[tailscale-init] $*"
+    logger -t tailscale-init "$*"
 }
 
-stop_service() {
-    /tmp/tailscale --socket=/tmp/tailscale-runtime/tailscaled.sock down 2>/dev/null
+is_pid_running() {
+    PID="$1"
+    [ -n "$PID" ] && kill -0 "$PID" 2>/dev/null
+}
+
+get_loader_pid() {
+    [ -f "$PIDFILE" ] && cat "$PIDFILE" 2>/dev/null
+}
+
+get_watchdog_pid() {
+    [ -f "$WATCHDOG_PIDFILE" ] && cat "$WATCHDOG_PIDFILE" 2>/dev/null
+}
+
+start_loader_once() {
+    if [ ! -x "$LOADER" ]; then
+        log_msg "ERROR: loader script not found or not executable: $LOADER"
+        return 1
+    fi
+
+    OLD_PID="$(get_loader_pid)"
+    if is_pid_running "$OLD_PID"; then
+        log_msg "loader already running with PID $OLD_PID"
+        return 0
+    fi
+
+    log_msg "starting loader..."
+
+    "$LOADER" >> "$LOGFILE" 2>&1 &
+    NEW_PID="$!"
+    echo "$NEW_PID" > "$PIDFILE"
+
+    log_msg "loader started with PID $NEW_PID"
+    return 0
+}
+
+stop_loader_once() {
+    OLD_PID="$(get_loader_pid)"
+    if is_pid_running "$OLD_PID"; then
+        log_msg "stopping loader PID $OLD_PID"
+        kill "$OLD_PID" 2>/dev/null
+        sleep 2
+        kill -9 "$OLD_PID" 2>/dev/null
+    fi
+
+    rm -f "$PIDFILE"
+}
+
+stop_tailscale_processes() {
+    log_msg "stopping tailscale processes..."
+
+    if [ -x "$TAILSCALE" ]; then
+        "$TAILSCALE" --socket="$TS_SOCKET" down 2>/dev/null
+    fi
+
     killall tailscaled 2>/dev/null
     killall tailscale.combined 2>/dev/null
+
+    rm -f "$TS_SOCKET"
+}
+
+watchdog_loop() {
+    log_msg "watchdog started"
+
+    while true; do
+        LOADER_PID="$(get_loader_pid)"
+
+        if ! is_pid_running "$LOADER_PID"; then
+            log_msg "loader is not running; restarting"
+            start_loader_once
+        fi
+
+        if [ -x "$TAILSCALE" ] && [ -S "$TS_SOCKET" ]; then
+            "$TAILSCALE" --socket="$TS_SOCKET" status >/dev/null 2>&1
+            STATUS_RET="$?"
+
+            if [ "$STATUS_RET" -ne 0 ]; then
+                log_msg "tailscale status returned $STATUS_RET; restarting loader"
+                stop_loader_once
+                stop_tailscale_processes
+                start_loader_once
+            fi
+        fi
+
+        sleep 60
+    done
+}
+
+start_watchdog() {
+    OLD_WATCHDOG_PID="$(get_watchdog_pid)"
+    if is_pid_running "$OLD_WATCHDOG_PID"; then
+        log_msg "watchdog already running with PID $OLD_WATCHDOG_PID"
+        return 0
+    fi
+
+    watchdog_loop >> "$LOGFILE" 2>&1 &
+    NEW_WATCHDOG_PID="$!"
+    echo "$NEW_WATCHDOG_PID" > "$WATCHDOG_PIDFILE"
+
+    log_msg "watchdog started with PID $NEW_WATCHDOG_PID"
+}
+
+stop_watchdog() {
+    OLD_WATCHDOG_PID="$(get_watchdog_pid)"
+    if is_pid_running "$OLD_WATCHDOG_PID"; then
+        log_msg "stopping watchdog PID $OLD_WATCHDOG_PID"
+        kill "$OLD_WATCHDOG_PID" 2>/dev/null
+        sleep 1
+        kill -9 "$OLD_WATCHDOG_PID" 2>/dev/null
+    fi
+
+    rm -f "$WATCHDOG_PIDFILE"
+}
+
+start() {
+    log_msg "service start requested"
+
+    mkdir -p /var/run
+    touch "$LOGFILE"
+
+    start_loader_once
+    start_watchdog
+
+    log_msg "service started"
+}
+
+stop() {
+    log_msg "service stop requested"
+
+    stop_watchdog
+    stop_loader_once
+    stop_tailscale_processes
+
+    log_msg "service stopped"
+}
+
+restart() {
+    log_msg "service restart requested"
+    stop
+    sleep 3
+    start
+}
+
+status() {
+    LOADER_PID="$(get_loader_pid)"
+    WATCHDOG_PID="$(get_watchdog_pid)"
+
+    echo "tailscale-loader service status:"
+    if is_pid_running "$LOADER_PID"; then
+        echo "  loader:   running, PID $LOADER_PID"
+    else
+        echo "  loader:   stopped"
+    fi
+
+    if is_pid_running "$WATCHDOG_PID"; then
+        echo "  watchdog: running, PID $WATCHDOG_PID"
+    else
+        echo "  watchdog: stopped"
+    fi
+
+    if [ -x "$TAILSCALE" ] && [ -S "$TS_SOCKET" ]; then
+        echo ""
+        "$TAILSCALE" --socket="$TS_SOCKET" status 2>/dev/null
+    else
+        echo ""
+        echo "  tailscale CLI/socket not ready"
+    fi
 }
