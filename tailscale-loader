@@ -1,4 +1,4 @@
-!/bin/sh /etc/rc.common
+#!/bin/sh /etc/rc.common
 # OpenWrt init.d service for Tailscale-ZLAN9809M Online Optimized
 # Compatible fallback mode without procd dependency.
 #
