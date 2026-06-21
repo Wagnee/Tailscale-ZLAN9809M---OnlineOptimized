@@ -88,7 +88,7 @@ start_tailscaled() {
     TS_PID="$!"
 
     i=0
-    while [ $i -lt 30 ]; do
+    while [ $i -lt 180 ]; do
         [ -S "$TS_SOCKET" ] && return 0
         sleep 1
         i=$((i + 1))
@@ -131,8 +131,8 @@ main() {
 
     while true; do
         download_binary && break
-        log "Trying again in 30 seconds..."
-        sleep 30
+        log "Trying again in 120 seconds..."
+        sleep 120
     done
 
     start_tailscaled || exit 1
