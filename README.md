@@ -1,3 +1,41 @@
+
+# Português
+
+## Tailscale para ZLAN9809M com carregamento otimizado em `/tmp`
+
+Este repositório facilita o uso do **Tailscale** no roteador industrial **ZLAN9809M**, baseado em **OpenWrt 21.02 / ramips / mipsel_24kc**.
+
+O objetivo é permitir que o ZLAN9809M funcione como um **Tailscale Subnet Router**, oferecendo acesso remoto aos dispositivos conectados à LAN do roteador, mesmo quando a conexão 4G está atrás de **CGNAT**.
+
+Como o ZLAN9809M possui pouco espaço persistente disponível no overlay, esta solução não instala o binário completo do Tailscale permanentemente na flash. Em vez disso:
+
+- o binário `tailscale.combined` é baixado automaticamente para `/tmp`;
+- o binário é recriado a cada boot, sem ocupar espaço permanente;
+- o estado/autenticação do Tailscale fica salvo em `/etc/tailscale`;
+- o serviço inicia automaticamente com o OpenWrt;
+- quando o roteador encontra internet, ele baixa o binário e inicia o Tailscale.
+
+---
+
+# English
+
+## Tailscale for ZLAN9809M with optimized `/tmp` runtime loading
+
+This repository makes it easier to run **Tailscale** on the **ZLAN9809M** industrial router, based on **OpenWrt 21.02 / ramips / mipsel_24kc**.
+
+The goal is to allow the ZLAN9809M to work as a **Tailscale Subnet Router**, providing remote access to devices connected to the router LAN, even when the 4G connection is behind **CGNAT**.
+
+Because the ZLAN9809M has very limited persistent overlay storage, this solution does not permanently install the full Tailscale binary into flash. Instead:
+
+- the `tailscale.combined` binary is automatically downloaded to `/tmp`;
+- the binary is recreated at each boot without permanently consuming flash storage;
+- Tailscale state/authentication is stored in `/etc/tailscale`;
+- the service starts automatically with OpenWrt;
+- once the router has internet access, it downloads the binary and starts Tailscale.
+
+---
+
+
 ## Installation / Instalação
 
 ### Automatic installation / Instalação automática
