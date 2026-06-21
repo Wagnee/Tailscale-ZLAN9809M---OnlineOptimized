@@ -1,66 +1,28 @@
+# Tailscale-ZLAN9809M Online Optimized
 
-# Português
+## English
 
-## Tailscale para ZLAN9809M com carregamento otimizado em `/tmp`
+### Overview
 
-Este repositório facilita o uso do **Tailscale** no roteador industrial **ZLAN9809M**, baseado em **OpenWrt 21.02 / ramips / mipsel_24kc**.
+This repository provides an optimized way to run **Tailscale** on the **ZLAN9809M** industrial 4G router, based on **OpenWrt 21.02 / ramips / mipsel_24kc**.
 
-O objetivo é permitir que o ZLAN9809M funcione como um **Tailscale Subnet Router**, oferecendo acesso remoto aos dispositivos conectados à LAN do roteador, mesmo quando a conexão 4G está atrás de **CGNAT**.
+The goal is to use the ZLAN9809M as a **Tailscale Subnet Router**, allowing remote access to devices connected to the router LAN, even when the 4G connection is behind **CGNAT**.
 
-Como o ZLAN9809M possui pouco espaço persistente disponível no overlay, esta solução não instala o binário completo do Tailscale permanentemente na flash. Em vez disso:
+Because the ZLAN9809M has very limited persistent flash storage, this solution does not permanently install the Tailscale binary into the overlay filesystem. Instead:
 
-- o binário `tailscale.combined` é baixado automaticamente para `/tmp`;
-- o binário é recriado a cada boot, sem ocupar espaço permanente;
-- o estado/autenticação do Tailscale fica salvo em `/etc/tailscale`;
-- o serviço inicia automaticamente com o OpenWrt;
-- quando o roteador encontra internet, ele baixa o binário e inicia o Tailscale.
-
----
-
-# English
-
-## Tailscale for ZLAN9809M with optimized `/tmp` runtime loading
-
-This repository makes it easier to run **Tailscale** on the **ZLAN9809M** industrial router, based on **OpenWrt 21.02 / ramips / mipsel_24kc**.
-
-The goal is to allow the ZLAN9809M to work as a **Tailscale Subnet Router**, providing remote access to devices connected to the router LAN, even when the 4G connection is behind **CGNAT**.
-
-Because the ZLAN9809M has very limited persistent overlay storage, this solution does not permanently install the full Tailscale binary into flash. Instead:
-
-- the `tailscale.combined` binary is automatically downloaded to `/tmp`;
-- the binary is recreated at each boot without permanently consuming flash storage;
-- Tailscale state/authentication is stored in `/etc/tailscale`;
-- the service starts automatically with OpenWrt;
-- once the router has internet access, it downloads the binary and starts Tailscale.
+- `tailscale.combined` is downloaded to `/tmp`;
+- the binary is recreated at each boot;
+- Tailscale identity/state is stored in `/etc/tailscale`;
+- the OpenWrt service starts automatically at boot;
+- once internet access is available, the loader downloads the binary and starts Tailscale.
 
 ---
 
-
-## Installation / Instalação
-
-### Automatic installation / Instalação automática
+### Recommended installation
 
 Use the `install.sh` file from this repository.
 
-Run this in terminal:
-
-```text
-wget -O /tmp/install-tailscale-zlan.sh https://raw.githubusercontent.com/Wagnee/Tailscale-ZLAN9809M---OnlineOptimized/main/install.sh
-
-chmod +x /tmp/install-tailscale-zlan.sh
-
-sh /tmp/install-tailscale-zlan.sh
-```
-
-This is the recommended installation method. The installer downloads the required files, creates the Tailscale configuration, installs the OpenWrt startup service, and optionally installs the LuCI web interface.
-
-During installation, you will be asked for:
-
-* Tailscale device hostname
-* LAN subnet to advertise
-* Optional Tailscale auth key
-* Whether to install the LuCI web menu
-* Whether to start the service immediately
+The installer downloads the required files, creates or preserves the Tailscale configuration, installs the OpenWrt startup service, optionally installs the LuCI web interface, and can start the service immediately.
 
 Required file:
 
@@ -68,39 +30,23 @@ Required file:
 install.sh
 ```
 
-Use o arquivo `install.sh` deste repositório.
+During installation, you may be asked for:
 
-Execute esses comandos em sequência no terminal:
+- what to do if an existing installation is found;
+- Tailscale device hostname;
+- LAN subnet to advertise;
+- optional Tailscale auth key;
+- whether to install the LuCI web menu;
+- whether to start the service immediately;
+- whether to reboot after installation.
 
-```text
-wget -O /tmp/install-tailscale-zlan.sh https://raw.githubusercontent.com/Wagnee/Tailscale-ZLAN9809M---OnlineOptimized/main/install.sh
-
-chmod +x /tmp/install-tailscale-zlan.sh
-
-sh /tmp/install-tailscale-zlan.sh
-```
-
-Este é o método de instalação recomendado. O instalador baixa os arquivos necessários, cria a configuração do Tailscale, instala o serviço de inicialização do OpenWrt e oferece a opção de instalar a interface web LuCI.
-
-Durante a instalação, serão solicitadas as seguintes informações:
-
-* Nome do dispositivo no Tailscale
-* Sub-rede LAN a ser anunciada
-* Chave de autenticação opcional do Tailscale
-* Se deseja instalar o menu LuCI
-* Se deseja iniciar o serviço imediatamente
-
-Arquivo necessário:
-
-```text
-install.sh
-```
+If an existing installation is detected, `install.sh` also offers an uninstall option.
 
 ---
 
-### Manual installation / Instalação manual
+### Manual installation
 
-For manual installation, use the files below as reference:
+For manual installation, use these repository files as reference:
 
 ```text
 tailscale.env
@@ -111,69 +57,41 @@ tailscale.combined
 
 File purpose:
 
-| File                  | Purpose                                  |
-| --------------------- | ---------------------------------------- |
-| `tailscale.env`       | Main configuration file template         |
-| `tailscale-loader.sh` | Runtime loader script                    |
-| `tailscale-loader`    | OpenWrt init.d service                   |
-| `tailscale.combined`  | Combined Tailscale binary for the router |
+| File | Purpose |
+|---|---|
+| `tailscale.env` | Main configuration file template |
+| `tailscale-loader.sh` | Runtime loader script |
+| `tailscale-loader` | OpenWrt init.d service |
+| `tailscale.combined` | Combined Tailscale binary for the router |
 
 Recommended target paths on the router:
 
-| Repository file       | Router path                    |
-| --------------------- | ------------------------------ |
-| `tailscale.env`       | `/etc/tailscale/tailscale.env` |
+| Repository file | Router path |
+|---|---|
+| `tailscale.env` | `/etc/tailscale/tailscale.env` |
 | `tailscale-loader.sh` | `/usr/bin/tailscale-loader.sh` |
-| `tailscale-loader`    | `/etc/init.d/tailscale-loader` |
-| `tailscale.combined`  | `/tmp/tailscale.combined`      |
+| `tailscale-loader` | `/etc/init.d/tailscale-loader` |
+| `tailscale.combined` | `/tmp/tailscale.combined` |
 
-The binary is intentionally placed in `/tmp` because the ZLAN9809M has very limited persistent flash storage.
-
-Para instalação manual, use os arquivos abaixo como referência:
-
-```text
-tailscale.env
-tailscale-loader.sh
-tailscale-loader
-tailscale.combined
-```
-
-Função de cada arquivo:
-
-| Arquivo               | Função                                         |
-| --------------------- | ---------------------------------------------- |
-| `tailscale.env`       | Modelo principal do arquivo de configuração    |
-| `tailscale-loader.sh` | Script de carregamento em tempo de execução    |
-| `tailscale-loader`    | Serviço init.d do OpenWrt                      |
-| `tailscale.combined`  | Binário combinado do Tailscale para o roteador |
-
-Caminhos recomendados no roteador:
-
-| Arquivo do repositório | Caminho no roteador            |
-| ---------------------- | ------------------------------ |
-| `tailscale.env`        | `/etc/tailscale/tailscale.env` |
-| `tailscale-loader.sh`  | `/usr/bin/tailscale-loader.sh` |
-| `tailscale-loader`     | `/etc/init.d/tailscale-loader` |
-| `tailscale.combined`   | `/tmp/tailscale.combined`      |
-
-O binário é colocado intencionalmente em `/tmp`, pois o ZLAN9809M possui pouco espaço de armazenamento persistente na flash.
+The binary is intentionally placed in `/tmp` because the ZLAN9809M has very limited persistent overlay storage.
 
 ---
 
-## LuCI web interface / Interface web LuCI
+### LuCI web interface
 
-This project includes an optional LuCI menu for managing the Tailscale loader directly from the OpenWrt web interface.
+This project includes an optional LuCI menu to manage the Tailscale loader from the OpenWrt web interface.
 
-The LuCI menu allows you to:
+The LuCI menu can:
 
-* View Tailscale status
-* View Tailscale IP
-* Start, stop, and restart the service
-* View loader logs
-* Check running processes
-* Edit hostname
-* Edit advertised routes
-* Update or clear the auth key
+- show Tailscale status;
+- show the Tailscale IP address;
+- start, stop and restart the service;
+- show loader logs;
+- show running processes;
+- show memory and disk usage;
+- edit hostname;
+- edit advertised routes;
+- update or clear the auth key.
 
 Required file:
 
@@ -187,67 +105,30 @@ After installation, the menu should appear in LuCI under:
 Services → Tailscale ZLAN
 ```
 
-The automatic installer can also install this menu at the end of the installation process.
-
-Este projeto inclui um menu LuCI opcional para gerenciar o carregador do Tailscale diretamente pela interface web do OpenWrt.
-
-O menu LuCI permite:
-
-* Ver o status do Tailscale
-* Ver o IP do Tailscale
-* Iniciar, parar e reiniciar o serviço
-* Ver os logs do loader
-* Verificar os processos em execução
-* Editar o hostname
-* Editar as rotas anunciadas
-* Atualizar ou limpar a auth key
-
-Arquivo necessário:
-
-```text
-install-luci.sh
-```
-
-Após a instalação, o menu deverá aparecer no LuCI em:
-
-```text
-Services → Tailscale ZLAN
-```
-
-O instalador automático também pode instalar esse menu ao final do processo de instalação.
+The main installer can also install this menu automatically.
 
 ---
 
-## Uninstall / Desinstalação
+### Uninstall
 
-To remove this solution from the router, use the uninstall script.
+The preferred uninstall method is to run `install.sh` again. If an existing installation is detected, choose the uninstall option from the installer menu.
 
-Run this in terminal:
-
-```text
-wget -O /tmp/uninstall-tailscale-zlan.sh https://raw.githubusercontent.com/Wagnee/Tailscale-ZLAN9809M---OnlineOptimized/main/uninstall.sh
-
-chmod +x /tmp/uninstall-tailscale-zlan.sh
-
-sh /tmp/uninstall-tailscale-zlan.sh
-```
-
-Required file:
+The standalone uninstall script is also available:
 
 ```text
 uninstall.sh
 ```
 
-The uninstaller removes:
+The uninstall process removes:
 
-* OpenWrt init.d service
-* Runtime loader script
-* Temporary Tailscale binary
-* Runtime symlinks
-* Tailscale runtime socket directory
-* Temporary logs
-* LuCI menu files
-* LuCI cache
+- OpenWrt init.d service;
+- runtime loader script;
+- temporary Tailscale binary;
+- runtime symlinks;
+- Tailscale runtime socket directory;
+- temporary logs;
+- LuCI menu files;
+- LuCI cache.
 
 During uninstall, you can choose what to do with the persistent Tailscale configuration:
 
@@ -262,34 +143,162 @@ Keeping `/etc/tailscale` is useful if you plan to reinstall later and want to pr
 
 Removing `/etc/tailscale` is useful if you want to completely remove this solution from the router.
 
-Para remover esta solução do roteador, use o script de desinstalação.
+---
 
-Execute esses comandos em sequência no terminal:
+### Repository files
 
-```text
-wget -O /tmp/uninstall-tailscale-zlan.sh https://raw.githubusercontent.com/Wagnee/Tailscale-ZLAN9809M---OnlineOptimized/main/uninstall.sh
+| File | Description |
+|---|---|
+| `install.sh` | Main automatic installer and uninstall menu |
+| `install-luci.sh` | Optional LuCI web menu installer |
+| `uninstall.sh` | Standalone uninstall script |
+| `tailscale.env` | Configuration template |
+| `tailscale-loader.sh` | Runtime loader script |
+| `tailscale-loader` | OpenWrt init.d service |
+| `tailscale.combined` | Combined Tailscale binary |
+| `luci/tailscale_zlan.lua` | LuCI controller |
+| `luci/status.htm` | LuCI status/configuration page |
+| `.gitattributes` | Ensures Linux-compatible LF line endings |
 
-chmod +x /tmp/uninstall-tailscale-zlan.sh
+---
 
-sh /tmp/uninstall-tailscale-zlan.sh
-```
+### Notes
+
+Do not publish your Tailscale auth key in GitHub, documentation, screenshots, logs or issue reports.
+
+If a script fails with errors such as `not found` or `unexpected end of file`, check that the repository files are using Linux-compatible LF line endings. The `.gitattributes` file is included to help prevent CRLF issues.
+
+---
+
+## Português
+
+### Visão geral
+
+Este repositório oferece uma forma otimizada de executar o **Tailscale** no roteador industrial **ZLAN9809M**, baseado em **OpenWrt 21.02 / ramips / mipsel_24kc**.
+
+O objetivo é usar o ZLAN9809M como um **Tailscale Subnet Router**, permitindo acesso remoto aos dispositivos conectados à LAN do roteador, mesmo quando a conexão 4G está atrás de **CGNAT**.
+
+Como o ZLAN9809M possui pouco espaço persistente disponível na flash, esta solução não instala permanentemente o binário do Tailscale no overlay. Em vez disso:
+
+- `tailscale.combined` é baixado para `/tmp`;
+- o binário é recriado a cada boot;
+- a identidade/estado do Tailscale fica salva em `/etc/tailscale`;
+- o serviço OpenWrt inicia automaticamente no boot;
+- quando a internet está disponível, o loader baixa o binário e inicia o Tailscale.
+
+---
+
+### Instalação recomendada
+
+Use o arquivo `install.sh` deste repositório.
+
+O instalador baixa os arquivos necessários, cria ou preserva a configuração do Tailscale, instala o serviço de inicialização do OpenWrt, oferece a instalação da interface LuCI e pode iniciar o serviço imediatamente.
 
 Arquivo necessário:
+
+```text
+install.sh
+```
+
+Durante a instalação, você poderá escolher:
+
+- o que fazer caso uma instalação existente seja encontrada;
+- nome do dispositivo no Tailscale;
+- sub-rede LAN a ser anunciada;
+- chave de autenticação opcional do Tailscale;
+- se deseja instalar o menu LuCI;
+- se deseja iniciar o serviço imediatamente;
+- se deseja reiniciar o roteador após a instalação.
+
+Se uma instalação existente for detectada, o `install.sh` também oferece uma opção de desinstalação.
+
+---
+
+### Instalação manual
+
+Para instalação manual, use os arquivos abaixo como referência:
+
+```text
+tailscale.env
+tailscale-loader.sh
+tailscale-loader
+tailscale.combined
+```
+
+Função de cada arquivo:
+
+| Arquivo | Função |
+|---|---|
+| `tailscale.env` | Modelo principal do arquivo de configuração |
+| `tailscale-loader.sh` | Script de carregamento em tempo de execução |
+| `tailscale-loader` | Serviço init.d do OpenWrt |
+| `tailscale.combined` | Binário combinado do Tailscale para o roteador |
+
+Caminhos recomendados no roteador:
+
+| Arquivo do repositório | Caminho no roteador |
+|---|---|
+| `tailscale.env` | `/etc/tailscale/tailscale.env` |
+| `tailscale-loader.sh` | `/usr/bin/tailscale-loader.sh` |
+| `tailscale-loader` | `/etc/init.d/tailscale-loader` |
+| `tailscale.combined` | `/tmp/tailscale.combined` |
+
+O binário é colocado intencionalmente em `/tmp`, pois o ZLAN9809M possui pouco espaço persistente disponível no overlay.
+
+---
+
+### Interface web LuCI
+
+Este projeto inclui um menu LuCI opcional para gerenciar o loader do Tailscale pela interface web do OpenWrt.
+
+O menu LuCI permite:
+
+- ver o status do Tailscale;
+- ver o IP do Tailscale;
+- iniciar, parar e reiniciar o serviço;
+- ver os logs do loader;
+- ver os processos em execução;
+- ver uso de memória e disco;
+- editar o hostname;
+- editar as rotas anunciadas;
+- atualizar ou limpar a auth key.
+
+Arquivo necessário:
+
+```text
+install-luci.sh
+```
+
+Após a instalação, o menu deverá aparecer no LuCI em:
+
+```text
+Services → Tailscale ZLAN
+```
+
+O instalador principal também pode instalar esse menu automaticamente.
+
+---
+
+### Desinstalação
+
+O método preferencial de desinstalação é executar o `install.sh` novamente. Se uma instalação existente for detectada, escolha a opção de desinstalação no menu do instalador.
+
+O script separado de desinstalação também está disponível:
 
 ```text
 uninstall.sh
 ```
 
-O desinstalador remove:
+O processo de desinstalação remove:
 
-* Serviço init.d do OpenWrt
-* Script de carregamento em tempo de execução
-* Binário temporário do Tailscale
-* Symlinks temporários
-* Diretório de runtime/socket do Tailscale
-* Logs temporários
-* Arquivos do menu LuCI
-* Cache do LuCI
+- serviço init.d do OpenWrt;
+- script de carregamento em tempo de execução;
+- binário temporário do Tailscale;
+- symlinks temporários;
+- diretório de runtime/socket do Tailscale;
+- logs temporários;
+- arquivos do menu LuCI;
+- cache do LuCI.
 
 Durante a desinstalação, é possível escolher o que fazer com a configuração persistente do Tailscale:
 
@@ -306,17 +315,25 @@ Remover `/etc/tailscale` é útil caso você queira apagar completamente esta so
 
 ---
 
-## Repository files / Arquivos do repositório
+### Arquivos do repositório
 
-| File / Arquivo            | Description / Descrição                                                                     |
-| ------------------------- | ------------------------------------------------------------------------------------------- |
-| `install.sh`              | Main automatic installer / Instalador automático principal                                  |
-| `install-luci.sh`         | Optional LuCI web menu installer / Instalador opcional do menu LuCI                         |
-| `uninstall.sh`            | Complete uninstall script / Script completo de desinstalação                                |
-| `tailscale.env`           | Configuration template / Modelo de configuração                                             |
-| `tailscale-loader.sh`     | Runtime loader script / Script de carregamento em tempo de execução                         |
-| `tailscale-loader`        | OpenWrt init.d service / Serviço init.d do OpenWrt                                          |
-| `tailscale.combined`      | Combined Tailscale binary / Binário combinado do Tailscale                                  |
-| `luci/tailscale_zlan.lua` | LuCI controller / Controller LuCI                                                           |
-| `luci/status.htm`         | LuCI status/configuration page / Página LuCI de status e configuração                       |
-| `.gitattributes`          | Ensures Linux-compatible LF line endings / Garante finais de linha LF compatíveis com Linux |
+| Arquivo | Descrição |
+|---|---|
+| `install.sh` | Instalador automático principal e menu de desinstalação |
+| `install-luci.sh` | Instalador opcional do menu LuCI |
+| `uninstall.sh` | Script separado de desinstalação |
+| `tailscale.env` | Modelo de configuração |
+| `tailscale-loader.sh` | Script de carregamento em tempo de execução |
+| `tailscale-loader` | Serviço init.d do OpenWrt |
+| `tailscale.combined` | Binário combinado do Tailscale |
+| `luci/tailscale_zlan.lua` | Controller LuCI |
+| `luci/status.htm` | Página LuCI de status e configuração |
+| `.gitattributes` | Garante finais de linha LF compatíveis com Linux |
+
+---
+
+### Observações
+
+Não publique sua Tailscale auth key no GitHub, documentação, capturas de tela, logs ou issues.
+
+Se algum script falhar com erros como `not found` ou `unexpected end of file`, verifique se os arquivos do repositório estão usando finais de linha LF compatíveis com Linux. O arquivo `.gitattributes` está incluído para ajudar a evitar problemas com CRLF.

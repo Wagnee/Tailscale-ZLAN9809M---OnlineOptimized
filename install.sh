@@ -1,5 +1,5 @@
 #!/bin/sh
-# Automatic installer for Tailscale-ZLAN9809M Online Optimized
+# Automatic installer/uninstaller for Tailscale-ZLAN9809M Online Optimized
 # Target: ZLAN9809M / OpenWrt / mipsel_24kc
 
 RAW_BASE="https://raw.githubusercontent.com/Wagnee/Tailscale-ZLAN9809M---OnlineOptimized/main"
@@ -17,8 +17,19 @@ STATE_FILE="$CONFIG_DIR/tailscaled.state"
 LOADER_PATH="/usr/bin/tailscale-loader.sh"
 INIT_PATH="/etc/init.d/tailscale-loader"
 
+LUCI_CONTROLLER="/usr/lib/lua/luci/controller/tailscale_zlan.lua"
+LUCI_VIEW_DIR="/usr/lib/lua/luci/view/tailscale_zlan"
+LUCI_VIEW="$LUCI_VIEW_DIR/status.htm"
+
 TMP_BINARY="/tmp/tailscale.combined"
 TMP_ENV="/tmp/tailscale.env.repo"
+TMP_TAILSCALE="/tmp/tailscale"
+TMP_TAILSCALED="/tmp/tailscaled"
+TMP_RUNTIME_DIR="/tmp/tailscale-runtime"
+TMP_LOG="/tmp/tailscale-loader.log"
+
+PIDFILE="/var/run/tailscale-loader.pid"
+WATCHDOG_PIDFILE="/var/run/tailscale-loader-watchdog.pid"
 
 TAILSCALE_BIN="/tmp/tailscale"
 TAILSCALED_BIN="/tmp/tailscaled"
@@ -39,36 +50,202 @@ if ! command -v wget >/dev/null 2>&1; then
     exit 1
 fi
 
+stop_existing_service() {
+    echo "Stopping previous Tailscale-ZLAN service if it exists..."
+
+    if [ -x "$INIT_PATH" ]; then
+        "$INIT_PATH" stop 2>/dev/null
+    fi
+
+    if [ -x "$TMP_TAILSCALE" ]; then
+        "$TMP_TAILSCALE" --socket="$TMP_RUNTIME_DIR/tailscaled.sock" down 2>/dev/null
+    fi
+
+    killall tailscaled 2>/dev/null
+    killall tailscale.combined 2>/dev/null
+    killall tailscale-loader.sh 2>/dev/null
+}
+
+clean_luci_cache() {
+    rm -f /tmp/luci-indexcache 2>/dev/null
+    rm -rf /tmp/luci-modulecache 2>/dev/null
+
+    if [ -x /etc/init.d/uhttpd ]; then
+        /etc/init.d/uhttpd restart 2>/dev/null
+    fi
+}
+
+uninstall_solution() {
+    echo ""
+    echo "============================================================"
+    echo " Tailscale-ZLAN9809M Online Optimized Uninstaller"
+    echo "============================================================"
+    echo ""
+
+    echo "This will remove the Tailscale-ZLAN9809M loader, service and LuCI menu."
+    echo ""
+    echo "Choose what to do with Tailscale configuration/state:"
+    echo "  1) Keep /etc/tailscale files"
+    echo "  2) Backup and remove /etc/tailscale files"
+    echo "  3) Remove /etc/tailscale files without backup"
+    echo "  4) Cancel uninstall"
+    echo ""
+    printf "Option [1]: "
+    read REMOVE_CONFIG_OPTION
+    REMOVE_CONFIG_OPTION="${REMOVE_CONFIG_OPTION:-1}"
+
+    case "$REMOVE_CONFIG_OPTION" in
+        1)
+            REMOVE_CONFIG="keep"
+            ;;
+        2)
+            REMOVE_CONFIG="backup_remove"
+            ;;
+        3)
+            REMOVE_CONFIG="remove"
+            ;;
+        4)
+            echo "Uninstall cancelled."
+            return 1
+            ;;
+        *)
+            echo "Invalid option."
+            return 1
+            ;;
+    esac
+
+    stop_existing_service
+
+    if [ -x "$INIT_PATH" ]; then
+        "$INIT_PATH" disable 2>/dev/null
+    fi
+
+    echo "Removing init service and loader script..."
+    rm -f "$INIT_PATH"
+    rm -f "$LOADER_PATH"
+
+    echo "Removing temporary runtime files..."
+    rm -f "$TMP_BINARY"
+    rm -f "$TMP_TAILSCALE"
+    rm -f "$TMP_TAILSCALED"
+    rm -f "$PIDFILE"
+    rm -f "$WATCHDOG_PIDFILE"
+    rm -f "$TMP_LOG"
+    rm -rf "$TMP_RUNTIME_DIR"
+
+    echo "Removing LuCI menu files..."
+    rm -f "$LUCI_CONTROLLER"
+    rm -f "$LUCI_VIEW"
+    rmdir "$LUCI_VIEW_DIR" 2>/dev/null
+
+    echo "Cleaning LuCI cache..."
+    clean_luci_cache
+
+    case "$REMOVE_CONFIG" in
+        keep)
+            echo ""
+            echo "Keeping Tailscale configuration/state:"
+            [ -f "$CONFIG_FILE" ] && echo "  - $CONFIG_FILE"
+            [ -f "$STATE_FILE" ] && echo "  - $STATE_FILE"
+            ;;
+        backup_remove)
+            BACKUP_DIR="/etc/tailscale.removed.$(date +%Y%m%d%H%M%S)"
+            echo ""
+            echo "Backing up Tailscale configuration/state to:"
+            echo "  $BACKUP_DIR"
+
+            mkdir -p "$BACKUP_DIR"
+
+            [ -f "$CONFIG_FILE" ] && cp "$CONFIG_FILE" "$BACKUP_DIR/tailscale.env"
+            [ -f "$STATE_FILE" ] && cp "$STATE_FILE" "$BACKUP_DIR/tailscaled.state"
+
+            echo "Removing /etc/tailscale..."
+            rm -rf "$CONFIG_DIR"
+            ;;
+        remove)
+            echo ""
+            echo "Removing /etc/tailscale without backup..."
+            rm -rf "$CONFIG_DIR"
+            ;;
+    esac
+
+    sync
+
+    echo ""
+    echo "Uninstall finished."
+    echo ""
+    echo "Recommended final check:"
+    echo "  ps | grep tailscale"
+    echo "  ls -lh /etc/init.d/tailscale-loader /usr/bin/tailscale-loader.sh 2>/dev/null"
+    echo ""
+
+    return 0
+}
+
+install_luci_menu() {
+    echo ""
+    printf "Install LuCI web menu? [Y/n]: "
+    read INSTALL_LUCI
+    INSTALL_LUCI="${INSTALL_LUCI:-Y}"
+
+    case "$INSTALL_LUCI" in
+        y|Y|yes|YES)
+            echo "Downloading LuCI menu installer..."
+
+            wget --no-check-certificate -O /tmp/install-luci-tailscale.sh "$LUCI_INSTALLER_URL"
+            if [ $? -ne 0 ]; then
+                echo "WARNING: failed to download LuCI installer."
+                echo "You can install it later using the install-luci.sh file from this repository."
+                return 1
+            fi
+
+            sed -i 's/\r$//' /tmp/install-luci-tailscale.sh 2>/dev/null
+            chmod +x /tmp/install-luci-tailscale.sh
+
+            echo "Running LuCI menu installer..."
+            sh /tmp/install-luci-tailscale.sh
+            ;;
+        *)
+            echo "LuCI menu installation skipped."
+            ;;
+    esac
+}
+
+echo "Current disk usage:"
+df -h
+echo ""
+
 if [ ! -e /dev/net/tun ]; then
     echo "WARNING: /dev/net/tun was not found."
     echo "Tailscale may not work unless kmod-tun is available."
     echo ""
 fi
 
-echo "Current disk usage:"
-df -h
-echo ""
+INSTALLATION_FOUND="0"
+[ -f "$CONFIG_FILE" ] && INSTALLATION_FOUND="1"
+[ -f "$STATE_FILE" ] && INSTALLATION_FOUND="1"
+[ -f "$LOADER_PATH" ] && INSTALLATION_FOUND="1"
+[ -f "$INIT_PATH" ] && INSTALLATION_FOUND="1"
+[ -f "$LUCI_CONTROLLER" ] && INSTALLATION_FOUND="1"
+[ -f "$LUCI_VIEW" ] && INSTALLATION_FOUND="1"
 
-echo "Stopping previous Tailscale service if it exists..."
-if [ -x "$INIT_PATH" ]; then
-    "$INIT_PATH" stop 2>/dev/null
-fi
+KEEP_EXISTING="0"
 
-killall tailscaled 2>/dev/null
-killall tailscale.combined 2>/dev/null
-
-mkdir -p "$CONFIG_DIR"
-
-if [ -f "$CONFIG_FILE" ] || [ -f "$STATE_FILE" ]; then
+if [ "$INSTALLATION_FOUND" = "1" ]; then
     echo ""
-    echo "Existing Tailscale configuration/state was found:"
+    echo "Existing Tailscale-ZLAN installation/configuration was found:"
     [ -f "$CONFIG_FILE" ] && echo "  - $CONFIG_FILE"
     [ -f "$STATE_FILE" ] && echo "  - $STATE_FILE"
+    [ -f "$LOADER_PATH" ] && echo "  - $LOADER_PATH"
+    [ -f "$INIT_PATH" ] && echo "  - $INIT_PATH"
+    [ -f "$LUCI_CONTROLLER" ] && echo "  - $LUCI_CONTROLLER"
+    [ -f "$LUCI_VIEW" ] && echo "  - $LUCI_VIEW"
     echo ""
     echo "Choose what to do:"
-    echo "  1) Keep existing Tailscale state and only update files"
-    echo "  2) Backup and reset configuration/state"
-    echo "  3) Cancel installation"
+    echo "  1) Keep existing Tailscale state/configuration and update files"
+    echo "  2) Backup and reset Tailscale configuration/state, then install"
+    echo "  3) Uninstall Tailscale-ZLAN from this router"
+    echo "  4) Cancel"
     echo ""
     printf "Option [1]: "
     read EXISTING_OPTION
@@ -94,6 +271,10 @@ if [ -f "$CONFIG_FILE" ] || [ -f "$STATE_FILE" ]; then
             KEEP_EXISTING="0"
             ;;
         3)
+            uninstall_solution
+            exit $?
+            ;;
+        4)
             echo "Installation cancelled."
             exit 0
             ;;
@@ -102,9 +283,11 @@ if [ -f "$CONFIG_FILE" ] || [ -f "$STATE_FILE" ]; then
             exit 1
             ;;
     esac
-else
-    KEEP_EXISTING="0"
 fi
+
+stop_existing_service
+
+mkdir -p "$CONFIG_DIR"
 
 echo ""
 echo "Downloading repository files from:"
@@ -213,39 +396,6 @@ else
     cat "$CONFIG_FILE" 2>/dev/null
 fi
 
-install_luci_menu() {
-    echo ""
-    printf "Install LuCI web menu? [Y/n]: "
-    read INSTALL_LUCI
-    INSTALL_LUCI="${INSTALL_LUCI:-Y}"
-
-    case "$INSTALL_LUCI" in
-        y|Y|yes|YES)
-            echo "Downloading LuCI menu installer..."
-
-            wget --no-check-certificate -O /tmp/install-luci-tailscale.sh "$LUCI_INSTALLER_URL"
-            if [ $? -ne 0 ]; then
-                echo "WARNING: failed to download LuCI installer."
-                echo "You can install it later with:"
-                echo "  wget --no-check-certificate -O /tmp/install-luci-tailscale.sh $LUCI_INSTALLER_URL"
-                echo "  sed -i 's/\\r$//' /tmp/install-luci-tailscale.sh"
-                echo "  chmod +x /tmp/install-luci-tailscale.sh"
-                echo "  sh /tmp/install-luci-tailscale.sh"
-                return 1
-            fi
-
-            sed -i 's/\r$//' /tmp/install-luci-tailscale.sh 2>/dev/null
-            chmod +x /tmp/install-luci-tailscale.sh
-
-            echo "Running LuCI menu installer..."
-            sh /tmp/install-luci-tailscale.sh
-            ;;
-        *)
-            echo "LuCI menu installation skipped."
-            ;;
-    esac
-}
-
 echo ""
 echo "Enabling service on boot..."
 "$INIT_PATH" enable
@@ -299,7 +449,18 @@ if [ -f "$CONFIG_FILE" ]; then
 fi
 
 echo ""
-echo "Rebooting to run tailscale."
-echo ""
-reboot
+printf "Reboot now? [y/N]: "
+read REBOOT_NOW
+REBOOT_NOW="${REBOOT_NOW:-N}"
+
+case "$REBOOT_NOW" in
+    y|Y|yes|YES)
+        echo "Rebooting..."
+        reboot
+        ;;
+    *)
+        echo "Reboot skipped."
+        ;;
+esac
+
 echo ""
