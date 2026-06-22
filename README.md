@@ -172,6 +172,61 @@ If a script fails with errors such as `not found` or `unexpected end of file`, c
 
 ---
 
+### Hardware specifications
+
+The **ZLAN9809M** is an industrial 4G router with limited resources:
+
+| Specification | Details |
+|---|---|
+| CPU | MediaTek MT7628A (580 MHz, mipsel_24kc) |
+| RAM | 64 MB DDR2 |
+| Flash Storage | 16 MB (limited overlay space) |
+| Architecture | OpenWrt 21.02 / ramips / mipsel_24kc |
+| Network | 4G LTE + Ethernet |
+| Available Free Space | ~5 MB (after OpenWrt system) |
+
+Due to these hardware constraints, this solution is designed to minimize disk and memory usage.
+
+---
+
+### Memory and storage usage
+
+**Disk Storage (excluding tailscale.combined binary):**
+
+- **Installation files** (temporary, downloaded from GitHub): ~18.6 KB
+  - install.sh: 12.78 KB
+  - install-luci.sh: 1.71 KB
+  - uninstall.sh: 4.12 KB
+
+- **Permanent installed files**: ~44 KB
+  - /usr/bin/tailscale-loader.sh: 13.68 KB
+  - /etc/init.d/tailscale-loader: ~5 KB
+  - /usr/lib/lua/luci/controller/tailscale_zlan.lua: 5.1 KB
+  - /usr/lib/lua/luci/view/tailscale_zlan/status.htm: 19.21 KB
+  - /etc/tailscale/tailscale.env: 0.61 KB
+  - /etc/tailscale/version.txt: 0.01 KB
+  - /etc/tailscale/connection_history.txt: ~0.5 KB (max 10 entries)
+
+- **Total permanent storage**: ~44 KB
+- **Total with installation**: ~62 KB
+
+**RAM Usage (excluding tailscale.combined binary):**
+
+- tailscale-loader.sh (main script): ~1-2 MB
+- tailscale-loader (watchdog service): ~0.5 MB
+- monitor_vpn (background process): ~0.3 MB
+- **Total RAM for scripts**: ~3-4 MB
+
+**Temporary files in /tmp (volatile RAM):**
+
+- /tmp/tailscale.combined: ~8-10 MB (binary, excluded from above)
+- /tmp/tailscale-loader.log: ~50 KB (limited)
+- /tmp/tailscale-runtime/: socket directory
+
+**Impact on ZLAN9809M**: Minimal - scripts occupy less than 100 KB on disk and ~3-4 MB of RAM, well within the device constraints.
+
+---
+
 ## Português
 
 ### Visão geral
@@ -333,6 +388,61 @@ Remover `/etc/tailscale` é útil caso você queira apagar completamente esta so
 | `luci/tailscale_zlan.lua` | Controller LuCI |
 | `luci/status.htm` | Página LuCI de status e configuração |
 | `.gitattributes` | Garante finais de linha LF compatíveis com Linux |
+
+---
+
+### Especificações de hardware
+
+O **ZLAN9809M** é um roteador industrial 4G com recursos limitados:
+
+| Especificação | Detalhes |
+|---|---|
+| CPU | MediaTek MT7628A (580 MHz, mipsel_24kc) |
+| RAM | 64 MB DDR2 |
+| Armazenamento Flash | 16 MB (espaço de overlay limitado) |
+| Arquitetura | OpenWrt 21.02 / ramips / mipsel_24kc |
+| Rede | 4G LTE + Ethernet |
+| Espaço Livre Disponível | ~5 MB (após sistema OpenWrt) |
+
+Devido a essas restrições de hardware, esta solução foi projetada para minimizar o uso de disco e memória.
+
+---
+
+### Uso de memória e armazenamento
+
+**Armazenamento em Disco (excluindo binário tailscale.combined):**
+
+- **Arquivos de instalação** (temporários, baixados do GitHub): ~18.6 KB
+  - install.sh: 12.78 KB
+  - install-luci.sh: 1.71 KB
+  - uninstall.sh: 4.12 KB
+
+- **Arquivos instalados permanentemente**: ~44 KB
+  - /usr/bin/tailscale-loader.sh: 13.68 KB
+  - /etc/init.d/tailscale-loader: ~5 KB
+  - /usr/lib/lua/luci/controller/tailscale_zlan.lua: 5.1 KB
+  - /usr/lib/lua/luci/view/tailscale_zlan/status.htm: 19.21 KB
+  - /etc/tailscale/tailscale.env: 0.61 KB
+  - /etc/tailscale/version.txt: 0.01 KB
+  - /etc/tailscale/connection_history.txt: ~0.5 KB (máximo 10 entradas)
+
+- **Total armazenamento permanente**: ~44 KB
+- **Total com instalação**: ~62 KB
+
+**Uso de RAM (excluindo binário tailscale.combined):**
+
+- tailscale-loader.sh (script principal): ~1-2 MB
+- tailscale-loader (serviço watchdog): ~0.5 MB
+- monitor_vpn (processo em background): ~0.3 MB
+- **Total RAM para scripts**: ~3-4 MB
+
+**Arquivos temporários em /tmp (RAM volátil):**
+
+- /tmp/tailscale.combined: ~8-10 MB (binário, excluído acima)
+- /tmp/tailscale-loader.log: ~50 KB (limitado)
+- /tmp/tailscale-runtime/: diretório de socket
+
+**Impacto no ZLAN9809M**: Mínimo - os scripts ocupam menos de 100 KB em disco e ~3-4 MB de RAM, bem dentro das restrições do dispositivo.
 
 ---
 
