@@ -59,10 +59,44 @@ local function parse_tailscale_status(status_text)
         info.uptime = uptime_match
     end
 
-    -- Parse peers
-    for peer in status_text:gmatch("#%s*([^\n]+)") do
-        if peer:match("%d+%.%d+%.%d+%.%d+") then
-            table.insert(info.peers, peer)
+    -- Parse peers with detailed information
+    local current_peer = nil
+    for line in status_text:gmatch("[^\r\n]+") do
+        -- Match peer header line (e.g., "# hostname:device-name")
+        local peer_header = line:match("^#%s*(.+)$")
+        if peer_header then
+            current_peer = {
+                header = peer_header,
+                name = peer_header:match("([^:]+)$") or peer_header,
+                dns = peer_header,
+                ip = "N/A",
+                status = "unknown",
+                last_seen = "N/A"
+            }
+        elseif current_peer then
+            -- Parse peer details
+            local ip = line:match("Tailscale IPs?: ([^\n]+)")
+            if ip then
+                current_peer.ip = ip
+            end
+            
+            local status = line:match("active%s*")
+            if status then
+                current_peer.status = "online"
+            elseif line:match("offline") then
+                current_peer.status = "offline"
+            end
+            
+            local last_seen = line:match("last seen: ([^\n]+)")
+            if last_seen then
+                current_peer.last_seen = last_seen
+            end
+            
+            -- If we have enough info, add to peers list
+            if current_peer.ip ~= "N/A" or current_peer.status ~= "unknown" then
+                table.insert(info.peers, current_peer)
+                current_peer = nil
+            end
         end
     end
 
@@ -120,6 +154,20 @@ end
 
 local env = read_env()
 
+local function read_history()
+    local history = {}
+    local f = io.open("/etc/tailscale/connection_history.txt", "r")
+
+    if f then
+        for line in f:lines() do
+            table.insert(history, line)
+        end
+        f:close()
+    end
+
+    return history
+end
+
 local service_status = sys.exec("/etc/init.d/tailscale-loader status 2>&1")
 local ps_status = sys.exec("ps | grep tailscale | grep -v grep 2>&1")
 local tailscale_status = sys.exec("/tmp/tailscale --socket=/tmp/tailscale-runtime/tailscaled.sock status 2>&1")
@@ -127,6 +175,7 @@ local tailscale_ip = sys.exec("/tmp/tailscale --socket=/tmp/tailscale-runtime/ta
 local log_output = sys.exec("tail -n 50 /tmp/tailscale-loader.log 2>&1")
 local disk_output = sys.exec("df -h 2>&1")
 local mem_output = sys.exec("free -h 2>&1")
+local connection_history = read_history()
 
 local ts_info = parse_tailscale_status(tailscale_status)
 local process_uptime = get_process_uptime()
@@ -208,6 +257,106 @@ local is_service_running = service_status:match("running") ~= nil or ps_status:m
     border-bottom: none;
 }
 
+.peer-status {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 8px;
+}
+
+.peer-status-online {
+    background-color: #28a745;
+}
+
+.peer-status-offline {
+    background-color: #dc3545;
+}
+
+.peer-status-unknown {
+    background-color: #6c757d;
+}
+
+.peer-card {
+    background: #f9f9f9;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    padding: 12px;
+    margin-bottom: 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.peer-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.ping-btn {
+    background: #5cacee;
+    color: white;
+    border: none;
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.ping-btn:hover {
+    background: #4a9bdc;
+}
+
+.ping-btn:disabled {
+    background: #ccc;
+    cursor: not-allowed;
+}
+
+.ping-result {
+    font-size: 11px;
+    margin-left: 8px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    background: #f0f0f0;
+    display: none;
+}
+
+.ping-result.show {
+    display: inline-block;
+}
+
+.ping-result.success {
+    background: #d4edda;
+    color: #155724;
+}
+
+.ping-result.error {
+    background: #f8d7da;
+    color: #721c24;
+}
+
+.peer-info {
+    flex: 1;
+}
+
+.peer-name {
+    font-weight: bold;
+    color: #333;
+    font-size: 14px;
+}
+
+.peer-ip {
+    color: #666;
+    font-size: 12px;
+    margin-top: 4px;
+}
+
+.peer-meta {
+    color: #888;
+    font-size: 11px;
+    margin-top: 4px;
+}
+
 .log-container {
     max-height: 300px;
     overflow-y: auto;
@@ -248,9 +397,76 @@ local is_service_running = service_status:match("running") ~= nil or ps_status:m
 </style>
 
 <script>
+let autoRefreshInterval = null;
+let autoRefreshEnabled = false;
+
 function refreshPage() {
     location.reload();
 }
+
+function toggleAutoRefresh() {
+    const checkbox = document.getElementById('auto-refresh-toggle');
+    if (checkbox.checked) {
+        if (!autoRefreshEnabled) {
+            autoRefreshInterval = setInterval(refreshPage, 30000); // 30 seconds
+            autoRefreshEnabled = true;
+        }
+    } else {
+        if (autoRefreshInterval) {
+            clearInterval(autoRefreshInterval);
+            autoRefreshInterval = null;
+            autoRefreshEnabled = false;
+        }
+    }
+}
+
+async function pingPeer(peerIp, buttonId) {
+    const button = document.getElementById(buttonId);
+    const resultSpan = document.getElementById(buttonId + '-result');
+    
+    button.disabled = true;
+    button.textContent = 'Pinging...';
+    resultSpan.className = 'ping-result';
+    resultSpan.textContent = '';
+    
+    try {
+        const response = await fetch('<%=url('admin/services/tailscale_zlan/ping')%>?peer_ip=' + encodeURIComponent(peerIp));
+        const data = await response.json();
+        
+        if (data.success) {
+            resultSpan.className = 'ping-result show success';
+            resultSpan.textContent = data.avg_time + ' (' + data.packet_loss + ' loss)';
+        } else {
+            resultSpan.className = 'ping-result show error';
+            resultSpan.textContent = 'Failed';
+        }
+    } catch (error) {
+        resultSpan.className = 'ping-result show error';
+        resultSpan.textContent = 'Error';
+    }
+    
+    button.disabled = false;
+    button.textContent = '📡 Ping';
+}
+
+// Check if auto-refresh was previously enabled
+if (localStorage.getItem('tailscaleAutoRefresh') === 'true') {
+    const checkbox = document.getElementById('auto-refresh-toggle');
+    if (checkbox) {
+        checkbox.checked = true;
+        toggleAutoRefresh();
+    }
+}
+
+// Save auto-refresh preference
+document.addEventListener('DOMContentLoaded', function() {
+    const checkbox = document.getElementById('auto-refresh-toggle');
+    if (checkbox) {
+        checkbox.addEventListener('change', function() {
+            localStorage.setItem('tailscaleAutoRefresh', this.checked);
+        });
+    }
+});
 </script>
 
 <h2>Tailscale ZLAN9809M - Dashboard</h2>
@@ -264,6 +480,10 @@ function refreshPage() {
     <a class="btn cbi-button cbi-button-reset" href="<%=url('admin/services/tailscale_zlan/action')%>?cmd=stop">Stop</a>
     <a class="btn cbi-button cbi-button-reload" href="<%=url('admin/services/tailscale_zlan/action')%>?cmd=restart">Restart</a>
     <button class="refresh-btn" onclick="refreshPage()">🔄 Refresh</button>
+    <label style="margin-left: 15px; display: flex; align-items: center; font-size: 14px;">
+        <input type="checkbox" id="auto-refresh-toggle" onchange="toggleAutoRefresh()" style="margin-right: 5px;">
+        Auto-refresh (30s)
+    </label>
 </div>
 
 <div class="tailscale-dashboard">
@@ -292,6 +512,40 @@ function refreshPage() {
         <div class="stat-label" style="margin-top: 10px;">Connected Peers</div>
         <div class="stat-value"><%= #ts_info.peers %></div>
     </div>
+</div>
+
+<div class="config-section">
+    <h3>📱 Tailnet Devices</h3>
+    <% if #ts_info.peers > 0 then %>
+        <div style="margin-bottom: 15px;">
+            <span style="color: #666; font-size: 14px;">Total devices: <%= #ts_info.peers %></span>
+        </div>
+        <div style="max-height: 400px; overflow-y: auto;">
+            <% for i, peer in ipairs(ts_info.peers) do %>
+                <div class="peer-card">
+                    <div class="peer-info">
+                        <div class="peer-name">
+                            <span class="peer-status peer-status-<%= peer.status %>"></span>
+                            <%= pcdata(peer.name) %>
+                        </div>
+                        <div class="peer-ip"><%= pcdata(peer.ip) %></div>
+                        <div class="peer-meta">
+                            Status: <%= peer.status:upper() %>
+                            <% if peer.last_seen ~= "N/A" then %>
+                                | Last seen: <%= pcdata(peer.last_seen) %>
+                            <% end %>
+                        </div>
+                    </div>
+                    <div class="peer-actions">
+                        <button class="ping-btn" id="ping-btn-<%= i %>" onclick="pingPeer('<%= pcdata(peer.ip) %>', 'ping-btn-<%= i %>')">📡 Ping</button>
+                        <span class="ping-result" id="ping-btn-<%= i %>-result"></span>
+                    </div>
+                </div>
+            <% end %>
+        </div>
+    <% else %>
+        <p style="color: #666; font-style: italic;">No peers connected yet.</p>
+    <% end %>
 </div>
 
 <div class="config-section">
@@ -355,10 +609,25 @@ function refreshPage() {
     </div>
 
     <div class="status-card">
-        <h3>📝 Recent Logs</h3>
-        <div class="log-container">
-            <%=pcdata(log_output)%>
-        </div>
+        <h3>� Connection History</h3>
+        <% if #connection_history > 0 then %>
+            <div class="log-container" style="max-height: 200px;">
+                <% for i, entry in ipairs(connection_history) do %>
+                    <div style="padding: 4px 0; border-bottom: 1px solid #eee;">
+                        <%= pcdata(entry) %>
+                    </div>
+                <% end %>
+            </div>
+        <% else %>
+            <p style="color: #666; font-style: italic; font-size: 12px;">No history available yet.</p>
+        <% end %>
+    </div>
+</div>
+
+<div class="config-section">
+    <h3>📝 Recent Logs</h3>
+    <div class="log-container">
+        <%=pcdata(log_output)%>
     </div>
 </div>
 

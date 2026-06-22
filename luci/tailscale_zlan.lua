@@ -17,6 +17,11 @@ function index()
         {"admin", "services", "tailscale_zlan", "save"},
         call("save")
     ).leaf = true
+
+    entry(
+        {"admin", "services", "tailscale_zlan", "ping"},
+        call("ping_peer")
+    ).leaf = true
 end
 
 function action()
@@ -120,4 +125,52 @@ function save()
     end
 
     http.redirect(dispatcher.build_url("admin", "services", "tailscale_zlan"))
+end
+
+function ping_peer()
+    local http = require "luci.http"
+    local sys = require "luci.sys"
+    local dispatcher = require "luci.dispatcher"
+
+    local peer_ip = http.formvalue("peer_ip")
+    
+    if not peer_ip or peer_ip == "" then
+        http.write_json({success = false, error = "No peer IP provided"})
+        return
+    end
+
+    -- Execute ping command (3 packets, 1 second timeout each)
+    local ping_output = sys.exec("ping -c 3 -W 1 " .. peer_ip .. " 2>&1")
+    
+    -- Parse ping output for statistics
+    local success = false
+    local avg_time = "N/A"
+    local packet_loss = "N/A"
+    
+    if ping_output then
+        -- Check if ping was successful
+        if ping_output:match("3 received") or ping_output:match("2 received") or ping_output:match("1 received") then
+            success = true
+        end
+        
+        -- Extract average time
+        local avg_match = ping_output:match("avg[= ]([%d%.]+)")
+        if avg_match then
+            avg_time = avg_match .. " ms"
+        end
+        
+        -- Extract packet loss
+        local loss_match = ping_output:match("(%d+)%% packet loss")
+        if loss_match then
+            packet_loss = loss_match .. "%"
+        end
+    end
+
+    http.write_json({
+        success = success,
+        peer_ip = peer_ip,
+        avg_time = avg_time,
+        packet_loss = packet_loss,
+        output = ping_output or ""
+    })
 end

@@ -24,6 +24,10 @@ VERSION_FILE="$TS_STATE_DIR/version.txt"
 REMOTE_VERSION_URL="https://raw.githubusercontent.com/Wagnee/Tailscale-ZLAN9809M---OnlineOptimized/main/version.txt"
 REPO_BASE="https://raw.githubusercontent.com/Wagnee/Tailscale-ZLAN9809M---OnlineOptimized/main"
 
+# Connection history (lightweight, max 10 entries)
+HISTORY_FILE="$TS_STATE_DIR/connection_history.txt"
+MAX_HISTORY=10
+
 log() {
     logger -t tailscale-loader "$*"
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] [tailscale-loader] $*" >> "$LOGFILE"
@@ -38,6 +42,23 @@ log() {
             mv "$LOGFILE.tmp" "$LOGFILE" 2>/dev/null
         fi
     fi
+}
+
+add_history_entry() {
+    local event="$1"
+    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    
+    mkdir -p "$TS_STATE_DIR"
+    
+    # Add new entry at the beginning
+    echo "$timestamp - $event" > "$HISTORY_FILE.tmp"
+    
+    # Append existing entries (up to MAX_HISTORY-1)
+    if [ -f "$HISTORY_FILE" ]; then
+        head -n $((MAX_HISTORY - 1)) "$HISTORY_FILE" >> "$HISTORY_FILE.tmp" 2>/dev/null
+    fi
+    
+    mv "$HISTORY_FILE.tmp" "$HISTORY_FILE" 2>/dev/null
 }
 
 get_local_version() {
@@ -337,8 +358,10 @@ tailscale_up() {
 
     if [ "$RET" -ne 0 ]; then
         log "tailscale up returned error: $RET"
+        add_history_entry "Connection failed (error $RET)"
     else
         log "tailscale up completed"
+        add_history_entry "VPN connected successfully"
     fi
 
     return "$RET"
@@ -369,6 +392,7 @@ monitor_vpn() {
             
             if [ $FAILURE_COUNT -ge $MAX_FAILURES ]; then
                 log "VPN failed $MAX_FAILURES consecutive checks, attempting reconnection"
+                add_history_entry "VPN disconnected, attempting reconnection"
                 FAILURE_COUNT=0
                 
                 # Try to bring down and up again
@@ -377,8 +401,10 @@ monitor_vpn() {
                 
                 if tailscale_up; then
                     log "VPN reconnection successful"
+                    add_history_entry "VPN reconnected successfully"
                 else
                     log "VPN reconnection failed, will retry on next cycle"
+                    add_history_entry "VPN reconnection failed"
                 fi
             fi
         else
