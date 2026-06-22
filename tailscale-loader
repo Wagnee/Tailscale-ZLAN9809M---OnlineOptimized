@@ -95,6 +95,8 @@ watchdog_loop() {
     log_msg "watchdog started"
 
     SOCKET_MISSING_COUNT=0
+    STATUS_FAILURE_COUNT=0
+    MAX_STATUS_FAILURES=3
 
     while true; do
         LOADER_PID="$(get_loader_pid)"
@@ -104,6 +106,7 @@ watchdog_loop() {
             stop_tailscale_processes
             start_loader_once
             SOCKET_MISSING_COUNT=0
+            STATUS_FAILURE_COUNT=0
             sleep 60
             continue
         fi
@@ -116,7 +119,18 @@ watchdog_loop() {
                 STATUS_RET="$?"
 
                 if [ "$STATUS_RET" -ne 0 ]; then
-                    log_msg "tailscale status returned $STATUS_RET; daemon is alive, not restarting"
+                    STATUS_FAILURE_COUNT=$((STATUS_FAILURE_COUNT + 1))
+                    log_msg "tailscale status check failed (attempt $STATUS_FAILURE_COUNT/$MAX_STATUS_FAILURES)"
+                    
+                    if [ "$STATUS_FAILURE_COUNT" -ge "$MAX_STATUS_FAILURES" ]; then
+                        log_msg "tailscale status failed $MAX_STATUS_FAILURES times; attempting reconnection"
+                        
+                        # Try to reconnect by sending SIGHUP to loader to trigger reconnection
+                        kill -HUP "$LOADER_PID" 2>/dev/null
+                        STATUS_FAILURE_COUNT=0
+                    fi
+                else
+                    STATUS_FAILURE_COUNT=0
                 fi
             fi
         else
@@ -129,10 +143,11 @@ watchdog_loop() {
                 stop_tailscale_processes
                 start_loader_once
                 SOCKET_MISSING_COUNT=0
+                STATUS_FAILURE_COUNT=0
             fi
         fi
 
-        sleep 60
+        sleep 30
     done
 }
 

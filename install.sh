@@ -8,6 +8,7 @@ BINARY_URL="$RAW_BASE/tailscale.combined"
 LOADER_URL="$RAW_BASE/tailscale-loader.sh"
 INIT_URL="$RAW_BASE/tailscale-loader"
 ENV_URL="$RAW_BASE/tailscale.env"
+VERSION_URL="$RAW_BASE/version.txt"
 LUCI_INSTALLER_URL="$RAW_BASE/install-luci.sh"
 
 CONFIG_DIR="/etc/tailscale"
@@ -299,6 +300,12 @@ wget --no-check-certificate -O "$TMP_ENV" "$ENV_URL"
 if [ $? -ne 0 ]; then
     echo "ERROR: failed to download tailscale.env"
     exit 1
+fi
+
+echo "Downloading version.txt..."
+wget --no-check-certificate -O "$CONFIG_DIR/version.txt" "$VERSION_URL"
+if [ $? -ne 0 ]; then
+    echo "WARNING: failed to download version.txt, auto-update may not work"
 fi
 
 echo "Downloading tailscale-loader.sh..."
