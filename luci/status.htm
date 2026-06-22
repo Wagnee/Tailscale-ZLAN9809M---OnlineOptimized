@@ -3,6 +3,7 @@
 <%
 local sys = require "luci.sys"
 local util = require "luci.util"
+local json = require "luci.json"
 
 local function pcdata(v)
     return util.pcdata(v or "")
@@ -27,36 +28,274 @@ local function read_env()
     return env
 end
 
+local function parse_tailscale_status(status_text)
+    local info = {
+        hostname = "N/A",
+        ip = "N/A",
+        peers = {},
+        uptime = "N/A",
+        is_running = false
+    }
+
+    if not status_text or status_text == "" then
+        return info
+    end
+
+    -- Parse hostname
+    info.hostname = status_text:match("Hostname: ([^\n]+)") or "N/A"
+    
+    -- Parse IP
+    info.ip = status_text:match("Tailscale IPs: ([^\n]+)") or "N/A"
+    if info.ip == "N/A" then
+        info.ip = status_text:match("%d+%.%d+%.%d+%.%d+")
+    end
+    
+    -- Check if running
+    info.is_running = status_text:match("Running") ~= nil or status_text:match("%d+%.%d+%.%d+%.%d+") ~= nil
+
+    -- Parse uptime if available
+    local uptime_match = status_text:match("uptime: ([^\n]+)")
+    if uptime_match then
+        info.uptime = uptime_match
+    end
+
+    -- Parse peers
+    for peer in status_text:gmatch("#%s*([^\n]+)") do
+        if peer:match("%d+%.%d+%.%d+%.%d+") then
+            table.insert(info.peers, peer)
+        end
+    end
+
+    return info
+end
+
+local function format_uptime(seconds)
+    if not seconds or seconds == "" then
+        return "N/A"
+    end
+    
+    local secs = tonumber(seconds)
+    if not secs then
+        return seconds
+    end
+    
+    local days = math.floor(secs / 86400)
+    local hours = math.floor((secs % 86400) / 3600)
+    local minutes = math.floor((secs % 3600) / 60)
+    
+    if days > 0 then
+        return string.format("%dd %dh %dm", days, hours, minutes)
+    elseif hours > 0 then
+        return string.format("%dh %dm", hours, minutes)
+    else
+        return string.format("%dm", minutes)
+    end
+end
+
+local function get_process_uptime()
+    local ps_output = sys.exec("ps | grep tailscaled | grep -v grep 2>&1")
+    if ps_output and ps_output:match("%d+") then
+        local pid = ps_output:match("%d+")
+        local stat_file = io.open("/proc/" .. pid .. "/stat", "r")
+        if stat_file then
+            local content = stat_file:read("*a")
+            stat_file:close()
+            local fields = {}
+            for field in content:gmatch("%S+") do
+                table.insert(fields, field)
+            end
+            if fields[22] then
+                local starttime = tonumber(fields[22])
+                local uptime = sys.exec("cat /proc/uptime | awk '{print $1}'")
+                if uptime then
+                    local total_uptime = tonumber(uptime)
+                    local process_uptime = total_uptime - (starttime / 100)
+                    return format_uptime(process_uptime)
+                end
+            end
+        end
+    end
+    return "N/A"
+end
+
 local env = read_env()
 
 local service_status = sys.exec("/etc/init.d/tailscale-loader status 2>&1")
 local ps_status = sys.exec("ps | grep tailscale | grep -v grep 2>&1")
 local tailscale_status = sys.exec("/tmp/tailscale --socket=/tmp/tailscale-runtime/tailscaled.sock status 2>&1")
 local tailscale_ip = sys.exec("/tmp/tailscale --socket=/tmp/tailscale-runtime/tailscaled.sock ip 2>&1")
-local log_output = sys.exec("tail -n 80 /tmp/tailscale-loader.log 2>&1")
+local log_output = sys.exec("tail -n 50 /tmp/tailscale-loader.log 2>&1")
 local disk_output = sys.exec("df -h 2>&1")
 local mem_output = sys.exec("free -h 2>&1")
+
+local ts_info = parse_tailscale_status(tailscale_status)
+local process_uptime = get_process_uptime()
+local is_service_running = service_status:match("running") ~= nil or ps_status:match("tailscaled") ~= nil
 %>
 
-<h2>Tailscale ZLAN9809M</h2>
+<style>
+.tailscale-dashboard {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 20px;
+    margin: 20px 0;
+}
+
+.status-card {
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.status-card h3 {
+    margin-top: 0;
+    margin-bottom: 15px;
+    color: #333;
+    font-size: 16px;
+    border-bottom: 2px solid #5cacee;
+    padding-bottom: 8px;
+}
+
+.status-indicator {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    margin-right: 8px;
+}
+
+.status-online {
+    background-color: #28a745;
+    animation: pulse 2s infinite;
+}
+
+.status-offline {
+    background-color: #dc3545;
+}
+
+@keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.5; }
+    100% { opacity: 1; }
+}
+
+.stat-value {
+    font-size: 24px;
+    font-weight: bold;
+    color: #5cacee;
+    margin: 10px 0;
+}
+
+.stat-label {
+    color: #666;
+    font-size: 14px;
+}
+
+.peer-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.peer-item {
+    padding: 8px 0;
+    border-bottom: 1px solid #eee;
+}
+
+.peer-item:last-child {
+    border-bottom: none;
+}
+
+.log-container {
+    max-height: 300px;
+    overflow-y: auto;
+    background: #f5f5f5;
+    padding: 10px;
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: 12px;
+}
+
+.config-section {
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 20px;
+    margin: 20px 0;
+}
+
+.action-buttons {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.refresh-btn {
+    background: #5cacee;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.refresh-btn:hover {
+    background: #4a9bdc;
+}
+</style>
+
+<script>
+function refreshPage() {
+    location.reload();
+}
+</script>
+
+<h2>Tailscale ZLAN9809M - Dashboard</h2>
 
 <p>
-    This page manages the lightweight Tailscale loader used on this ZLAN9809M/OpenWrt router.
+    Visual dashboard for Tailscale VPN on ZLAN9809M/OpenWrt router.
 </p>
 
-<div class="cbi-map">
-    <h3>Service actions</h3>
-
-    <p>
-        <a class="btn cbi-button cbi-button-apply" href="<%=url('admin/services/tailscale_zlan/action')%>?cmd=start">Start</a>
-        <a class="btn cbi-button cbi-button-reset" href="<%=url('admin/services/tailscale_zlan/action')%>?cmd=stop">Stop</a>
-        <a class="btn cbi-button cbi-button-reload" href="<%=url('admin/services/tailscale_zlan/action')%>?cmd=restart">Restart</a>
-    </p>
+<div class="action-buttons" style="margin: 20px 0;">
+    <a class="btn cbi-button cbi-button-apply" href="<%=url('admin/services/tailscale_zlan/action')%>?cmd=start">Start</a>
+    <a class="btn cbi-button cbi-button-reset" href="<%=url('admin/services/tailscale_zlan/action')%>?cmd=stop">Stop</a>
+    <a class="btn cbi-button cbi-button-reload" href="<%=url('admin/services/tailscale_zlan/action')%>?cmd=restart">Restart</a>
+    <button class="refresh-btn" onclick="refreshPage()">🔄 Refresh</button>
 </div>
 
-<div class="cbi-map">
-    <h3>Configuration</h3>
+<div class="tailscale-dashboard">
+    <div class="status-card">
+        <h3>📡 Connection Status</h3>
+        <div style="display: flex; align-items: center; margin: 15px 0;">
+            <span class="status-indicator <%= is_service_running and 'status-online' or 'status-offline' %>"></span>
+            <span style="font-size: 18px; font-weight: bold;"><%= is_service_running and 'ONLINE' or 'OFFLINE' %></span>
+        </div>
+        <div class="stat-label">Process Uptime</div>
+        <div class="stat-value"><%= process_uptime %></div>
+    </div>
 
+    <div class="status-card">
+        <h3>🖥️ Device Info</h3>
+        <div class="stat-label">Hostname</div>
+        <div class="stat-value"><%= pcdata(env.TS_HOSTNAME or 'N/A') %></div>
+        <div class="stat-label" style="margin-top: 10px;">Tailscale IP</div>
+        <div class="stat-value"><%= pcdata(ts_info.ip) %></div>
+    </div>
+
+    <div class="status-card">
+        <h3>🌐 Network</h3>
+        <div class="stat-label">Advertised Routes</div>
+        <div class="stat-value" style="font-size: 16px;"><%= pcdata(env.TS_ROUTES or 'None') %></div>
+        <div class="stat-label" style="margin-top: 10px;">Connected Peers</div>
+        <div class="stat-value"><%= #ts_info.peers %></div>
+    </div>
+</div>
+
+<div class="config-section">
+    <h3>⚙️ Configuration</h3>
     <form method="post" action="<%=url('admin/services/tailscale_zlan/save')%>">
         <div class="cbi-section">
             <div class="cbi-value">
@@ -106,39 +345,38 @@ local mem_output = sys.exec("free -h 2>&1")
     </form>
 </div>
 
-<div class="cbi-map">
-    <h3>Service status</h3>
-    <pre><%=pcdata(service_status)%></pre>
+<div class="tailscale-dashboard">
+    <div class="status-card">
+        <h3>📊 System Resources</h3>
+        <div class="stat-label">Memory Usage</div>
+        <pre style="background: #f5f5f5; padding: 10px; border-radius: 4px; margin: 10px 0;"><%=pcdata(mem_output)%></pre>
+        <div class="stat-label">Disk Usage</div>
+        <pre style="background: #f5f5f5; padding: 10px; border-radius: 4px; margin: 10px 0;"><%=pcdata(disk_output)%></pre>
+    </div>
+
+    <div class="status-card">
+        <h3>📝 Recent Logs</h3>
+        <div class="log-container">
+            <%=pcdata(log_output)%>
+        </div>
+    </div>
 </div>
 
-<div class="cbi-map">
-    <h3>Tailscale IP</h3>
-    <pre><%=pcdata(tailscale_ip)%></pre>
-</div>
-
-<div class="cbi-map">
-    <h3>Tailscale status</h3>
-    <pre><%=pcdata(tailscale_status)%></pre>
-</div>
-
-<div class="cbi-map">
-    <h3>Processes</h3>
-    <pre><%=pcdata(ps_status)%></pre>
-</div>
-
-<div class="cbi-map">
-    <h3>Memory</h3>
-    <pre><%=pcdata(mem_output)%></pre>
-</div>
-
-<div class="cbi-map">
-    <h3>Disk</h3>
-    <pre><%=pcdata(disk_output)%></pre>
-</div>
-
-<div class="cbi-map">
-    <h3>Loader log</h3>
-    <pre><%=pcdata(log_output)%></pre>
+<div class="config-section">
+    <h3>🔍 Detailed Status</h3>
+    <details>
+        <summary style="cursor: pointer; padding: 10px; background: #f5f5f5; border-radius: 4px;">Click to expand detailed information</summary>
+        <div style="margin-top: 15px;">
+            <h4>Tailscale Status</h4>
+            <pre style="background: #f5f5f5; padding: 10px; border-radius: 4px; max-height: 300px; overflow-y: auto;"><%=pcdata(tailscale_status)%></pre>
+            
+            <h4 style="margin-top: 20px;">Service Status</h4>
+            <pre style="background: #f5f5f5; padding: 10px; border-radius: 4px;"><%=pcdata(service_status)%></pre>
+            
+            <h4 style="margin-top: 20px;">Running Processes</h4>
+            <pre style="background: #f5f5f5; padding: 10px; border-radius: 4px;"><%=pcdata(ps_status)%></pre>
+        </div>
+    </details>
 </div>
 
 <%+footer%>
