@@ -213,8 +213,7 @@ start_tailscaled() {
     "$TAILSCALED" \
         --state="$TS_STATE_DIR/tailscaled.state" \
         --socket="$TS_SOCKET" \
-        --port=41641 \
-        --tun=userspace-networking &
+        --port=41641  &
 
     TS_PID="$!"
 
