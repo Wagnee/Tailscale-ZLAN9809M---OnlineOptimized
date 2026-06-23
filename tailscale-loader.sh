@@ -157,24 +157,7 @@ download_binary() {
 }
 
 enable_forwarding() {
-    # Enable IP forwarding immediately
     echo 1 > /proc/sys/net/ipv4/ip_forward
-    
-    # Persist IP forwarding across reboots
-    if [ -f /etc/sysctl.conf ]; then
-        grep -q "^net.ipv4.ip_forward" /etc/sysctl.conf 2>/dev/null
-        if [ $? -ne 0 ]; then
-            echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf
-            log "Persisted ip_forward in sysctl.conf"
-        fi
-    fi
-    
-    # Also try OpenWrt-specific method
-    if [ -f /etc/config/network ]; then
-        uci set network.lan.ipaddr=192.168.9.1 2>/dev/null
-        uci commit network 2>/dev/null
-    fi
-    
     log "IP forwarding enabled"
 }
 
@@ -243,15 +226,15 @@ start_tailscaled() {
 tailscale_up() {
     enable_forwarding
 
-    CMD="$TAILSCALE --socket=$TS_SOCKET up --hostname=$TS_HOSTNAME --accept-dns=false --reset"
+    CMD="$TAILSCALE --socket=$TS_SOCKET up --hostname=$TS_HOSTNAME --accept-dns=false"
 
-    if [ -n "$TS_ROUTES" ]; then
-        CMD="$CMD --advertise-routes=$TS_ROUTES"
-    fi
+   if [ "$TS_UP_RESET" = "1" ]; then
+       CMD="$CMD --reset"
+   fi
 
-    if [ -n "$TS_AUTHKEY" ]; then
-        CMD="$CMD --auth-key=$TS_AUTHKEY"
-    fi
+   if [ -n "$TS_NETFILTER_MODE" ]; then
+      CMD="$CMD --netfilter-mode=$TS_NETFILTER_MODE"
+   fi
 
     log "Running tailscale up..."
 
@@ -269,51 +252,8 @@ tailscale_up() {
     return "$RET"
 }
 
-check_vpn_status() {
-    if [ ! -x "$TAILSCALE" ] || [ ! -S "$TS_SOCKET" ]; then
-        return 1
-    fi
-    
-    "$TAILSCALE" --socket="$TS_SOCKET" status >/dev/null 2>&1
-    return $?
-}
 
-monitor_vpn() {
-    log "Starting VPN monitoring loop"
-    
-    CHECK_INTERVAL=30
-    FAILURE_COUNT=0
-    MAX_FAILURES=3
-    
-    while true; do
-        sleep $CHECK_INTERVAL
-        
-        if ! check_vpn_status; then
-            FAILURE_COUNT=$((FAILURE_COUNT + 1))
-            log "VPN status check failed (attempt $FAILURE_COUNT/$MAX_FAILURES)"
-            
-            if [ $FAILURE_COUNT -ge $MAX_FAILURES ]; then
-                log "VPN failed $MAX_FAILURES consecutive checks, attempting reconnection"
-                add_history_entry "VPN disconnected, attempting reconnection"
-                FAILURE_COUNT=0
-                
-                # Try to bring down and up again
-                "$TAILSCALE" --socket="$TS_SOCKET" down 2>/dev/null
-                sleep 5
-                
-                if tailscale_up; then
-                    log "VPN reconnection successful"
-                    add_history_entry "VPN reconnected successfully"
-                else
-                    log "VPN reconnection failed, will retry on next cycle"
-                    add_history_entry "VPN reconnection failed"
-                fi
-            fi
-        else
-            FAILURE_COUNT=0
-        fi
-    done
-}
+
 
 main() {
     wait_for_internet || {
@@ -366,14 +306,6 @@ main() {
     fi
 
     log "tailscaled running with PID $TS_PID"
-    
-    # Start VPN monitoring in background
-    monitor_vpn &
-    MONITOR_PID="$!"
-    log "VPN monitoring started with PID $MONITOR_PID"
-    
-    # Wait for tailscaled process
-    wait "$TS_PID"
     
     # If tailscaled exits, kill monitor and exit
     log "tailscaled exited, stopping monitor and exiting"
