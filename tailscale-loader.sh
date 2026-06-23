@@ -19,11 +19,6 @@ TAILSCALED="/tmp/tailscaled"
 LOGFILE="/tmp/tailscale-loader.log"
 MAX_LOG_SIZE=51200  # 50KB
 
-# Version tracking
-VERSION_FILE="$TS_STATE_DIR/version.txt"
-REMOTE_VERSION_URL="https://raw.githubusercontent.com/Wagnee/Tailscale-ZLAN9809M---OnlineOptimized/main/version.txt"
-REPO_BASE="https://raw.githubusercontent.com/Wagnee/Tailscale-ZLAN9809M---OnlineOptimized/main"
-
 # Connection history (lightweight, max 10 entries)
 HISTORY_FILE="$TS_STATE_DIR/connection_history.txt"
 MAX_HISTORY=10
@@ -71,98 +66,6 @@ get_local_version() {
 
 get_remote_version() {
     wget --no-check-certificate -qO- "$REMOTE_VERSION_URL" 2>/dev/null
-}
-
-check_for_updates() {
-    log "Checking for updates..."
-    
-    LOCAL_VERSION=$(get_local_version)
-    REMOTE_VERSION=$(get_remote_version)
-    
-    if [ -z "$REMOTE_VERSION" ]; then
-        log "Could not fetch remote version, skipping update check"
-        return 0
-    fi
-    
-    log "Local version: $LOCAL_VERSION, Remote version: $REMOTE_VERSION"
-    
-    if [ "$LOCAL_VERSION" = "$REMOTE_VERSION" ]; then
-        log "Already up to date"
-        return 0
-    fi
-    
-    log "New version available: $REMOTE_VERSION"
-    return 1
-}
-
-perform_update() {
-    log "Starting auto-update to latest version..."
-    
-    # Backup current config
-    CONFIG_BACKUP="$TS_STATE_DIR/tailscale.env.backup"
-    if [ -f "$CONFIG_FILE" ]; then
-        cp "$CONFIG_FILE" "$CONFIG_BACKUP"
-        log "Config backed up to $CONFIG_BACKUP"
-    fi
-    
-    # Download new loader script
-    LOADER_TMP="/tmp/tailscale-loader.sh.new"
-    log "Downloading new tailscale-loader.sh..."
-    wget --no-check-certificate -O "$LOADER_TMP" "$REPO_BASE/tailscale-loader.sh"
-    if [ $? -ne 0 ]; then
-        log "Failed to download new loader script"
-        return 1
-    fi
-    
-    # Download new init script
-    INIT_TMP="/tmp/tailscale-loader.new"
-    log "Downloading new tailscale-loader init script..."
-    wget --no-check-certificate -O "$INIT_TMP" "$REPO_BASE/tailscale-loader"
-    if [ $? -ne 0 ]; then
-        log "Failed to download new init script"
-        rm -f "$LOADER_TMP"
-        return 1
-    fi
-    
-    # Download new version file
-    VERSION_TMP="/tmp/version.txt.new"
-    log "Downloading new version file..."
-    wget --no-check-certificate -O "$VERSION_TMP" "$REMOTE_VERSION_URL"
-    if [ $? -ne 0 ]; then
-        log "Failed to download version file"
-        rm -f "$LOADER_TMP" "$INIT_TMP"
-        return 1
-    fi
-    
-    # Apply updates
-    log "Applying updates..."
-    
-    # Stop current service
-    if [ -x /etc/init.d/tailscale-loader ]; then
-        /etc/init.d/tailscale-loader stop 2>/dev/null
-    fi
-    
-    # Replace files
-    mv -f "$LOADER_TMP" "/usr/bin/tailscale-loader.sh"
-    chmod +x "/usr/bin/tailscale-loader.sh"
-    
-    mv -f "$INIT_TMP" "/etc/init.d/tailscale-loader"
-    chmod +x "/etc/init.d/tailscale-loader"
-    
-    # Update version file
-    mkdir -p "$TS_STATE_DIR"
-    mv -f "$VERSION_TMP" "$VERSION_FILE"
-    
-    # Restore config if it was overwritten
-    if [ -f "$CONFIG_BACKUP" ]; then
-        cp "$CONFIG_BACKUP" "$CONFIG_FILE"
-        log "Config restored from backup"
-    fi
-    
-    log "Update completed successfully"
-    
-    # Restart service with new code
-    exec /etc/init.d/tailscale-loader restart
 }
 
 wait_for_internet() {
