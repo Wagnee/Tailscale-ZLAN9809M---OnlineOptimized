@@ -27,9 +27,7 @@ The installer downloads the required files, creates or preserves the Tailscale c
 Required commands:
 
 ```text
-wget -O /tmp/install-tailscale-zlan.sh https://raw.githubusercontent.com/Wagnee/Tailscale-ZLAN9809M---OnlineOptimized/main/install.sh
-chmod +x /tmp/install-tailscale-zlan.sh
-sh /tmp/install-tailscale-zlan.sh
+wget --no-check-certificate -O /tmp/install-tailscale-zlan.sh https://raw.githubusercontent.com/Wagnee/Tailscale-ZLAN9809M---OnlineOptimized/main/install.sh && sed -i 's/\r$//' /tmp/install-tailscale-zlan.sh && chmod +x /tmp/install-tailscale-zlan.sh && sh /tmp/install-tailscale-zlan.sh
 ```
 
 During installation, you may be asked for:
@@ -254,9 +252,7 @@ O instalador baixa os arquivos necessários, cria ou preserva a configuração d
 Comando necessário:
 
 ```text
-wget -O /tmp/install-tailscale-zlan.sh https://raw.githubusercontent.com/Wagnee/Tailscale-ZLAN9809M---OnlineOptimized/main/install.sh
-chmod +x /tmp/install-tailscale-zlan.sh
-sh /tmp/install-tailscale-zlan.sh
+wget --no-check-certificate -O /tmp/install-tailscale-zlan.sh https://raw.githubusercontent.com/Wagnee/Tailscale-ZLAN9809M---OnlineOptimized/main/install.sh && sed -i 's/\r$//' /tmp/install-tailscale-zlan.sh && chmod +x /tmp/install-tailscale-zlan.sh && sh /tmp/install-tailscale-zlan.sh
 ```
 
 Durante a instalação, você poderá escolher:
