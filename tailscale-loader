@@ -126,8 +126,7 @@ watchdog_loop() {
                         log_msg "tailscale status failed $MAX_STATUS_FAILURES times; attempting reconnection"
                         
                         # Try to reconnect by sending SIGHUP to loader to trigger reconnection
-                        kill -HUP "$LOADER_PID" 2>/dev/null
-                        STATUS_FAILURE_COUNT=0
+                               STATUS_FAILURE_COUNT=0
                     fi
                 else
                     STATUS_FAILURE_COUNT=0
